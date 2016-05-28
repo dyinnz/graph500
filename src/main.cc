@@ -8,7 +8,9 @@
 #include <iostream>
 
 #include "unistd.h"
+
 #include "utility.h"
+#include "construct.h"
 
 using namespace dy_logger;
 using std::tuple;
@@ -17,7 +19,7 @@ using std::tie;
 Logger logger;
 Settings settings;
 
-Edge* GeneratorGraph(uint64_t vertex_num, uint64_t edge_desired_num);
+Edge* GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num);
 
 /*----------------------------------------------------------------------------*/
 
@@ -51,7 +53,7 @@ ParseParameters(int argc, char * const *argv) {
  */
 static void
 Initialize() {
-  settings.vertex_num = 1L << settings.scale;
+  settings.vertex_num = 1LL << settings.scale;
   settings.edge_desired_num = settings.edge_factor * settings.vertex_num;
 
   logger.log("------------------------------------------------\n");
@@ -69,6 +71,9 @@ main(int argc, char *argv[]) {
   Initialize();
 
   Edge *edges = GeneratorGraph(settings.vertex_num, settings.edge_desired_num);
+
+  CSRGraph csr(edges, settings.edge_desired_num);
+  csr.Construct();
 
   delete []edges;
   return 0;

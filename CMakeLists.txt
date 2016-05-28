@@ -7,4 +7,4 @@ file(GLOB Srcs ./src/*.cc)
 
 add_executable(graph500 ${Srcs})
 
-set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -g")
+set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -fopenmp -g")

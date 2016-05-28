@@ -14,14 +14,15 @@
 struct Settings {
   int scale {5};
   int edge_factor {16};
-  uint64_t vertex_num {0};
-  uint64_t edge_desired_num {0};
+  int64_t vertex_num {0};
+  int64_t edge_desired_num {0};
 };
 
 struct Edge {
-  uint64_t beg;
-  uint64_t end;
+  int64_t u;
+  int64_t v;
 };
 
 extern dy_logger::Logger logger;
 extern Settings settings;
+

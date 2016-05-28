@@ -27,7 +27,7 @@ constexpr double kANorm { kGenParaA / (kGenParaA + kGenParaB) };
  */
 Edge*
 GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num) {
-  logger.log("Begin generate edges array of graph...\n");
+  logger.log("begin generating edges array of graph...\n");
   Edge *edges = new Edge[edge_desired_num];
 
   auto U = new double[edge_desired_num];
@@ -77,11 +77,11 @@ GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num) {
 
   /*
   for (int64_t e = 0; e < edge_desired_num; ++e) {
-    printf("e %ld beg %ld, end %ld\n", e, edges[e].beg, edges[e].end);
+    printf("e %ld beg %ld, end %ld\n", e, edges[e].u, edges[e].v);
   }
   */
 
-  logger.log("Finish generating graph...\n");
+  logger.log("finish generating graph...\n");
   return edges;
 }
 

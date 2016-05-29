@@ -125,6 +125,7 @@ void CSRGraph::ConstructAdjacentArrays() {
       }
     }
 
+  /*
   for (int64_t u = 0; u < _vertex_num; ++u) {
     printf("u %ld beg %ld, end %ld\n", u, _adja_arrays[u].beg, _adja_arrays[u].end);
     for (auto iter = adja_beg(u); iter != adja_end(u); ++iter) {
@@ -133,6 +134,7 @@ void CSRGraph::ConstructAdjacentArrays() {
     }
     printf("\n");
   }
+  */
 }
 
 CSRGraph& CSRGraph::Construct() {

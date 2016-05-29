@@ -50,7 +50,6 @@ ParseParameters(int argc, char * const *argv) {
     }
   }
 
-  logger.log("------------------------------------------------\n");
   logger.log("Scale       : %d\n", settings.scale);
   logger.log("Edge factor : %d\n", settings.edge_factor);
 }
@@ -63,7 +62,6 @@ Initialize() {
   settings.vertex_num = 1LL << settings.scale;
   settings.edge_desired_num = settings.edge_factor * settings.vertex_num;
 
-  logger.log("------------------------------------------------\n");
   logger.log("Total vertexes      : %d\n", settings.vertex_num);
   logger.log("Total desired edges : %d\n", settings.edge_desired_num);
 }
@@ -111,7 +109,16 @@ SampleKeys(CSRGraph &csr) {
 
 int
 main(int argc, char *argv[]) {
-#ifdef DEBUG
+
+  // init mpi
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &settings.mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &settings.mpi_size);
+  logger.set_mpi_rank(settings.mpi_rank);
+
+  logger.mpi_log("MPI world: rank %d, size %d\n", settings.mpi_rank, settings.mpi_size);
+
+ #ifdef DEBUG
   logger.set_filter_level(Logger::kDebug);
   logger.debug("graph500 run in debug mode.\n");
 #endif
@@ -119,6 +126,7 @@ main(int argc, char *argv[]) {
   ParseParameters(argc, argv);
   Initialize();
 
+#if 0
   Edge *edges = GeneratorGraph(settings.vertex_num, settings.edge_desired_num);
 
   CSRGraph csr(edges, settings.edge_desired_num);
@@ -129,12 +137,15 @@ main(int argc, char *argv[]) {
     int64_t *bfs_tree = BuildBFSTree(csr, root);
     VerifyBFSTree(bfs_tree, csr.vertex_num(), root, 
         edges, settings.edge_desired_num);
+    delete bfs_tree;
+
 #ifdef DEBUG
     break;
 #endif
   }
 
   delete []edges;
+#endif
   return 0;
 }
 

@@ -85,7 +85,7 @@ class CSRGraph {
     void ConstructAdjacentArrays();
 
   public:
-    // AdjacentPair* adja_arrays() { return _adja_arrays; }
+    AdjacentPair* adja_arrays() { return _adja_arrays; }
     int64_t *csr_head() { return _csr_head; }
 
     /**

@@ -9,9 +9,13 @@
 
 #include <functional>
 
+#include "mpi.h"
+
 #include "simplelogger.h"
 
 struct Settings {
+  int mpi_rank {-1};
+  int mpi_size {-1};
   int scale {5};
   int edge_factor {16};
   int sample_num {64};

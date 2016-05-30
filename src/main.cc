@@ -1,4 +1,4 @@
-/*******************************************************************************
+/******************************************************************************
  * Author: Dyinnz.HUST.UniqueStudio
  * Email:  ml_143@sina.com
  * Github: https://github.com/dyinnz
@@ -21,6 +21,7 @@ Logger logger;
 Settings settings;
 
 Edge* GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num);
+LocalRawGraph MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num);
 int64_t* BuildBFSTree(CSRGraph &csr, int64_t root);
 bool VerifyBFSTree(int64_t *bfs_tree,
                    int64_t vertex_num,
@@ -114,10 +115,9 @@ main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &settings.mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &settings.mpi_size);
+  fprintf(stderr, "--- MPI world: rank %d, size %d ---\n", settings.mpi_rank, settings.mpi_size);
+
   logger.set_mpi_rank(settings.mpi_rank);
-
-  logger.mpi_log("MPI world: rank %d, size %d\n", settings.mpi_rank, settings.mpi_size);
-
  #ifdef DEBUG
   logger.set_filter_level(Logger::kDebug);
   logger.debug("graph500 run in debug mode.\n");
@@ -125,6 +125,9 @@ main(int argc, char *argv[]) {
 
   ParseParameters(argc, argv);
   Initialize();
+
+  LocalRawGraph local_raw = MPIGenerateGraph(settings.vertex_num, 
+                                             settings.edge_desired_num);
 
 #if 0
   Edge *edges = GeneratorGraph(settings.vertex_num, settings.edge_desired_num);
@@ -146,6 +149,9 @@ main(int argc, char *argv[]) {
 
   delete []edges;
 #endif
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Finalize();
   return 0;
 }
 

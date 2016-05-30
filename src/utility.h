@@ -8,6 +8,7 @@
 #pragma once
 
 #include <functional>
+#include <tuple>
 
 #include "mpi.h"
 
@@ -28,6 +29,11 @@ struct Edge {
   int64_t v;
 };
 
+struct LocalRawGraph {
+  Edge *edges;
+  int64_t edge_num;
+};
+
 extern dy_logger::Logger logger;
 extern Settings settings;
 
@@ -45,4 +51,30 @@ class ScopeGuarder {
 };
 
 #define ScopeGuard(F) ScopeGuarder __FILE__##__LINE__##ScopeGuarder(F)
+
+// inline std::pair<int64_t, int64_t>
+inline std::tuple<int64_t, int64_t>
+mpi_local_range(int64_t total) {
+  int64_t average = total / settings.mpi_size;
+  int64_t beg = average * settings.mpi_rank;
+  int64_t end = average * (settings.mpi_rank + 1);
+  if (settings.mpi_rank == settings.mpi_size - 1) {
+    end += total % settings.mpi_size;
+  }
+  return std::make_tuple(beg, end);
+}
+
+inline int64_t
+mpi_local_num(int64_t total) {
+  int64_t average = total / settings.mpi_size;
+  if (settings.mpi_rank == settings.mpi_size - 1) {
+    average += total % settings.mpi_size;
+  }
+  return average;
+}
+
+inline int64_t
+mpi_vertex_own(int64_t index, int64_t average) {
+   return std::min(int(index/average), settings.mpi_size-1);
+}
 

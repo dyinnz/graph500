@@ -5,13 +5,16 @@
  * Date:   2016-05-27
  ******************************************************************************/
 
+#include <tuple>
 #include <random>
 #include <algorithm>
 
 #include "utility.h"
+#include "prng_engine.hpp"
 
 using std::tuple;
 using std::make_tuple;
+using std::tie;
 
 constexpr double kGenParaA {0.57};
 constexpr double kGenParaB {0.19};
@@ -84,4 +87,102 @@ GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num) {
   logger.log("finish generating graph...\n");
   return edges;
 }
+
+static void
+GenerateEdgeTuples(int64_t mpi_rank, double *U, double *V, int64_t local_edge_num) {
+  // kronecker generator
+  sitmo::prng_engine gen(settings.mpi_rank);
+  std::uniform_real_distribution<double> dis(0.0, 1.0);
+  for (int i = 0; i < settings.scale; ++i) {
+    for (int64_t e = 0; e < local_edge_num; ++e) {
+      double beg_bit = (dis(gen) > kAB) ? 1.0 : 0.0;
+      double end_bit = (dis(gen) > (kCNorm*beg_bit + kANorm*(1.0 - end_bit))) ?
+                    1.0 : 0.0;
+      U[e] += (1 << i) * beg_bit;
+      V[e] += (1 << i) * end_bit;
+    }
+  }
+  /*
+  if (0 == mpi_rank) {
+    for (int64_t e = 0; e < local_edge_num; ++e) {
+      printf("U %lf, V %lf\n", U[e], V[e]);
+    }
+  }
+  */
+}
+
+static void
+ShuffleVertexes(int64_t mpi_rank, 
+                double *U, double *V,
+                int64_t local_edge_num,
+                int64_t vertex_num) {
+  auto permut_vertex = new int64_t[vertex_num];
+  for (int64_t i = 0; i < vertex_num; ++i) {
+    permut_vertex[i] = i;
+  }
+  std::mt19937_64 gen;
+  for (int64_t i = 0; i < vertex_num; ++i) {
+    std::swap(permut_vertex[i], permut_vertex[gen()%(vertex_num-i)+i]);
+  }
+  for (int64_t e = 0; e < local_edge_num; ++e) {
+    U[e] = permut_vertex[int64_t(U[e])];
+    V[e] = permut_vertex[int64_t(V[e])];
+  }
+  delete permut_vertex;
+
+  /*
+  if (0 == mpi_rank) {
+    for (int64_t e = 0; e < local_edge_num; ++e) {
+      printf("U %lf, V %lf\n", U[e], V[e]);
+    }
+  }
+  */
+}
+
+static Edge*
+ShuffleEdges(int64_t mpi_rank, 
+             double *U, double *V, 
+             int64_t edge_desired_num) {
+  Edge *edges = new Edge[edge_desired_num];
+
+  int64_t average = edge_desired_num / settings.mpi_size;
+  int64_t send_buf {0};
+
+  std::mt19937_64 gen;
+  for (int64_t e = 0; e < edge_desired_num; ++e) {
+    int64_t i = gen() % (edge_desired_num-e) + e;
+    /*
+    if (i != e) {
+      int64_t receiver = mpi_vertex_own(e, average);
+      int64_t sender = mpi_vertex_own(i, average);
+      // swap index as e
+      if (mpi_rank == sender) {
+      } else if (mpi_rank == receiver) {
+      }
+    }
+    */
+  }
+  return edges;
+}
+
+LocalRawGraph
+MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
+  logger.log("begin generating edges array of graph...\n");
+
+  LocalRawGraph local_raw;
+
+  local_raw.edge_num = mpi_local_num(edge_desired_num);
+  logger.mpi_debug("local edge num: %ld\n", local_raw.edge_num);
+
+  auto U = new double[local_raw.edge_num];
+  auto V = new double[local_raw.edge_num];
+  GenerateEdgeTuples(settings.mpi_rank, U, V, local_raw.edge_num);
+  ShuffleVertexes(settings.mpi_rank, U, V, local_raw.edge_num, vertex_num);
+  local_raw.edges = ShuffleEdges(settings.mpi_rank, U, V, local_raw.edge_num);
+  delete []U;
+  delete []V;
+
+  return local_raw;
+}
+
 

@@ -146,3 +146,48 @@ CSRGraph& CSRGraph::Construct() {
   return *this;
 }
 
+/*----------------------------------------------------------------------------*/
+
+void LocalCSRGraph::GetVertexNumber() {
+  int64_t max_vn { -1 };
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    max_vn = std::max(max_vn, edge_u(e));
+    max_vn = std::max(max_vn, edge_v(e));
+  }
+  MPI_Allreduce(MPI_IN_PLACE, &max_vn, 1, MPI_LONG_LONG, MPI_MAX, 
+      MPI_COMM_WORLD);
+  _global_v_num = max_vn + 1;
+
+  logger.log("global vertex num: %ld\n", _global_v_num);
+}
+
+void LocalCSRGraph::CountVertexes() {
+  auto adja_size = new int64_t[_global_v_num];
+  memset(adja_size, 0, sizeof(int64_t) * _global_v_num);
+
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    adja_size[edge_u(e)] += 1;
+    adja_size[edge_v(e)] += 1;
+  }
+  MPI_Allreduce(MPI_IN_PLACE, adja_size, _global_v_num, MPI_LONG_LONG,
+      MPI_SUM, MPI_COMM_WORLD);
+}
+
+void LocalCSRGraph::ComputeOffset() {
+  // TODO
+}
+
+void LocalCSRGraph::Construct() {
+  assert(_local_raw.edges);
+  assert(_local_raw.edge_num > 0);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  logger.log("begin constructing csr graph...\n");
+
+  GetVertexNumber();
+  CountVertexes();
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  logger.log("finishing constructing csr graph.\n");
+}
+

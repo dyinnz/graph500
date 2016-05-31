@@ -89,11 +89,14 @@ GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num) {
 }
 
 static void
-GenerateEdgeTuples(int64_t mpi_rank, double *U, double *V, int64_t local_edge_num) {
+GenerateEdgeTuples(int64_t mpi_rank, 
+                   int64_t scale, 
+                   double *U, double *V, 
+                   int64_t local_edge_num) {
   // kronecker generator
   sitmo::prng_engine gen(settings.mpi_rank);
   std::uniform_real_distribution<double> dis(0.0, 1.0);
-  for (int i = 0; i < settings.scale; ++i) {
+  for (int i = 0; i < scale; ++i) {
     for (int64_t e = 0; e < local_edge_num; ++e) {
       double beg_bit = (dis(gen) > kAB) ? 1.0 : 0.0;
       double end_bit = (dis(gen) > (kCNorm*beg_bit + kANorm*(1.0 - end_bit))) ?
@@ -195,6 +198,7 @@ LoadEdges(double *U, double *V, Edge *edges, int64_t local_edge_num) {
 
 LocalRawGraph
 MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
+  MPI_Barrier(MPI_COMM_WORLD);
   logger.log("begin generating edges array of graph...\n");
 
   LocalRawGraph local_raw;
@@ -204,7 +208,8 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
 
   auto U = new double[local_raw.edge_num];
   auto V = new double[local_raw.edge_num];
-  GenerateEdgeTuples(settings.mpi_rank, U, V, local_raw.edge_num);
+  GenerateEdgeTuples(settings.mpi_rank, settings.scale, 
+      U, V, local_raw.edge_num);
   ShuffleVertexes(settings.mpi_rank, U, V, local_raw.edge_num, vertex_num);
   ShuffleEdges(settings.mpi_rank, U, V, edge_desired_num);
 
@@ -220,6 +225,7 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   delete []U;
   delete []V;
 
+  MPI_Barrier(MPI_COMM_WORLD);
   logger.log("finish generating graph.\n");
   return local_raw;
 }

@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "utility.h"
+
 class CSRGraph {
   private:
     struct AdjacentPair {
@@ -107,3 +109,38 @@ class CSRGraph {
 
 CSRGraph
 ConstructCSRGraphSingle(const Edge *edges, int64_t edge_desired_num);
+
+/*----------------------------------------------------------------------------*/
+
+class LocalRawGraph;
+
+class LocalCSRGraph {
+  private:
+    LocalRawGraph &_local_raw;
+    int64_t _local_v_num {0};
+    int64_t _global_v_num {0};
+
+    struct AdjacentPair {
+      int64_t beg;
+      int64_t end;
+    };
+    AdjacentPair *_adja_arrays {nullptr};
+
+  private:
+    int64_t edge_u(int64_t e) { return _local_raw.edges[e].u; }
+    int64_t edge_v(int64_t e) { return _local_raw.edges[e].v; }
+
+    void GetVertexNumber();
+    void CountVertexes();
+    void ComputeOffset();
+
+  public:
+    LocalCSRGraph(LocalRawGraph &local_raw) : _local_raw(local_raw) {}
+
+    int64_t adja_beg(int64_t u) { return _adja_arrays[u].beg; }
+    int64_t adja_end(int64_t u) { return _adja_arrays[u].end; }
+
+    void Construct();
+};
+
+

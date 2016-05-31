@@ -129,6 +129,10 @@ main(int argc, char *argv[]) {
   LocalRawGraph local_raw = MPIGenerateGraph(settings.vertex_num, 
                                              settings.edge_desired_num);
 
+  LocalCSRGraph local_csr(local_raw);
+
+  local_csr.Construct();
+
   delete [] local_raw.edges;
   local_raw.edges = nullptr;
 

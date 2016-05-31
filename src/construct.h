@@ -119,6 +119,11 @@ class LocalCSRGraph {
     LocalRawGraph &_local_raw;
     int64_t _local_v_num {0};
     int64_t _global_v_num {0};
+    int64_t _local_v_beg {0};
+    int64_t _local_v_end {0};
+
+    int64_t *_csr_head {nullptr};
+    int64_t _csr_edge_num {0};
 
     struct AdjacentPair {
       int64_t beg;
@@ -131,14 +136,21 @@ class LocalCSRGraph {
     int64_t edge_v(int64_t e) { return _local_raw.edges[e].v; }
 
     void GetVertexNumber();
-    void CountVertexes();
-    void ComputeOffset();
+    void CountScatteredAdjacentSize(int64_t *adja_size);
+    std::tuple<AdjacentPair *, int64_t *> 
+      BuildScatteredCSR(const int64_t *adja_size);
+    void MergeAdjacentSize(int64_t *adja_size);
+    void ComputeOffset(const int64_t *adja_size);
+    void GatherEdges(const int64_t *adja_size,
+                     AdjacentPair *scatter_adja,
+                     int64_t *scatter_csr);
 
   public:
     LocalCSRGraph(LocalRawGraph &local_raw) : _local_raw(local_raw) {}
 
     int64_t adja_beg(int64_t u) { return _adja_arrays[u].beg; }
     int64_t adja_end(int64_t u) { return _adja_arrays[u].end; }
+    int64_t next_vertex(int64_t offset) { return _csr_head[offset]; }
 
     void Construct();
 };

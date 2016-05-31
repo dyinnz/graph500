@@ -157,7 +157,7 @@ main(int argc, char *argv[]) {
   delete []edges;
 #endif
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  mpi_log_barrier();
   MPI_Finalize();
   return 0;
 }

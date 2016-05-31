@@ -7,10 +7,15 @@
 
 #include <cassert>
 #include <cstring>
+#include <tuple>
 #include <algorithm>
 
 #include "utility.h"
 #include "construct.h"
+
+using std::tuple;
+using std::make_tuple;
+using std::tie;
 
 void CSRGraph::GetVertexNumber() {
   assert(_edges);
@@ -158,23 +163,133 @@ void LocalCSRGraph::GetVertexNumber() {
       MPI_COMM_WORLD);
   _global_v_num = max_vn + 1;
 
+  tie(_local_v_beg, _local_v_end) = mpi_local_range(_global_v_num);
+  _local_v_num = _local_v_end - _local_v_beg;
+
   logger.log("global vertex num: %ld\n", _global_v_num);
+  logger.mpi_log("vertex range: [%ld, %ld)\n", _local_v_beg, _local_v_end);
 }
 
-void LocalCSRGraph::CountVertexes() {
-  auto adja_size = new int64_t[_global_v_num];
+void LocalCSRGraph::CountScatteredAdjacentSize(int64_t *adja_size) {
+  logger.mpi_log("%s\n", __func__);
   memset(adja_size, 0, sizeof(int64_t) * _global_v_num);
-
+  // compute the size of adjacent arrays
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
-    adja_size[edge_u(e)] += 1;
-    adja_size[edge_v(e)] += 1;
+    if (edge_u(e) != edge_v(e)) {
+      adja_size[edge_u(e)] += 1;
+      adja_size[edge_v(e)] += 1;
+    }
   }
+}
+
+tuple<LocalCSRGraph::AdjacentPair *, int64_t *>
+LocalCSRGraph::BuildScatteredCSR(const int64_t *adja_size) {
+  logger.mpi_log("%s\n", __func__);
+  // compute the prefix
+  auto scatter_adja = new AdjacentPair[_global_v_num];
+  scatter_adja[0].beg = 0;
+  for (int64_t v = 1; v < _global_v_num; ++v) {
+    scatter_adja[v].beg = scatter_adja[v-1].beg + adja_size[v-1];
+  }
+  // reset the end position
+  for (int64_t v = 0; v < _global_v_num; ++v) {
+    scatter_adja[v].end = scatter_adja[v].beg;
+  }
+
+  /*
+  for (int64_t v = 0; v < _global_v_num; ++v) {
+    logger.mpi_log("v %ld: beg %ld\n", v, scatter_adja[v].beg);
+  }
+  */
+
+  int64_t scatter_csr_size = 
+    scatter_adja[_global_v_num-1].beg + adja_size[_global_v_num-1];
+  logger.mpi_log("scatter_csr_size: %ld\n", scatter_csr_size);
+  auto *scatter_csr_mem = new int64_t[scatter_csr_size];
+  memset(scatter_csr_mem, 0, sizeof(int64_t) * scatter_csr_size);
+
+  logger.mpi_log("build scattered csr...\n");
+
+  // build the scattered csr
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    int64_t u = edge_u(e);
+    int64_t v = edge_v(e);
+    if (u != v) {
+      /*
+      logger.mpi_log(" u %ld, beg %ld, end %ld\n", 
+          u, scatter_adja[u].beg, scatter_adja[v].end);
+          */
+      scatter_csr_mem[(scatter_adja[u].end)++] = v;
+      scatter_csr_mem[(scatter_adja[v].end)++] = u;
+    }
+  }
+
+  return make_tuple(scatter_adja, scatter_csr_mem);
+}
+
+void LocalCSRGraph::MergeAdjacentSize(int64_t *adja_size) {
+  logger.mpi_log("%s\n", __func__);
   MPI_Allreduce(MPI_IN_PLACE, adja_size, _global_v_num, MPI_LONG_LONG,
       MPI_SUM, MPI_COMM_WORLD);
 }
 
-void LocalCSRGraph::ComputeOffset() {
-  // TODO
+void LocalCSRGraph::ComputeOffset(const int64_t *adja_size) {
+  logger.mpi_log("%s\n", __func__);
+  _adja_arrays = new AdjacentPair[_local_v_num];
+  memset(_adja_arrays, -1, sizeof(AdjacentPair) * _local_v_num);
+
+  _adja_arrays[0].beg = 0;
+  _adja_arrays[0].end = 0 + adja_size[_local_v_beg + 0];
+  for (int64_t v = 1; v < _local_v_num; ++v) {
+    _adja_arrays[v].beg = _adja_arrays[v-1].end;
+    _adja_arrays[v].end = _adja_arrays[v].beg + adja_size[_local_v_beg + v];
+  }
+  _csr_edge_num = _adja_arrays[_local_v_num-1].end;
+  logger.log("CSR edge num: %d\n", _csr_edge_num);
+
+  /*
+  for (int64_t v = 0; v < _local_v_num; ++v) {
+    logger.mpi_debug("adj beg %ld, end %d\n", 
+        _adja_arrays[v].beg, _adja_arrays[v].end);
+  }
+  */
+}
+
+void LocalCSRGraph::GatherEdges(const int64_t *adja_size,
+    AdjacentPair *scatter_adja,
+    int64_t *scatter_csr) {
+  logger.mpi_log("%s\n", __func__);
+
+  _csr_head = new int64_t[_csr_edge_num];
+  memset(_csr_head, 0, sizeof(int64_t) * _csr_edge_num);
+
+  int64_t average = _global_v_num / settings.mpi_size;
+
+  for (int64_t v = 0; v < _global_v_num; ++v) {
+    int64_t receiver = mpi_get_own(v, average);
+    int64_t local_v = v - _local_v_beg;
+    int64_t *send_buf = &scatter_csr[ scatter_adja[v].beg ];
+    int64_t *recv_buf {nullptr};
+    int64_t recv_size = 0;
+    // if (receiver == settings.mpi_rank) {
+      recv_buf = &_csr_head[ _adja_arrays[local_v].beg ];
+      recv_size = adja_size[v];
+    /// }
+
+    logger.mpi_debug("v %ld, send size: %ld, recv size: %ld "
+        "receiver %ld, begin %ld\n", v,
+        scatter_adja[v].end - scatter_adja[v].beg,
+        adja_size[v],
+        receiver,
+        _adja_arrays[local_v].beg);
+
+    MPI_Gather(send_buf, scatter_adja[v].end - scatter_adja[v].beg,
+        MPI_LONG_LONG,
+        recv_buf, adja_size[v],
+        MPI_LONG_LONG,
+        receiver, MPI_COMM_WORLD);
+  }
+  logger.mpi_log("%s() finishing.. \n", __func__);
 }
 
 void LocalCSRGraph::Construct() {
@@ -185,7 +300,33 @@ void LocalCSRGraph::Construct() {
   logger.log("begin constructing csr graph...\n");
 
   GetVertexNumber();
-  CountVertexes();
+
+  auto adja_size = new int64_t[_global_v_num];
+  CountScatteredAdjacentSize(adja_size);
+
+  AdjacentPair *scatter_adja {nullptr};
+  int64_t *scatter_csr {nullptr};
+  tie(scatter_adja, scatter_csr) = BuildScatteredCSR(adja_size);
+
+  MergeAdjacentSize(adja_size);
+  ComputeOffset(adja_size);
+  GatherEdges(adja_size, scatter_adja, scatter_csr);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (0 == settings.mpi_rank) {
+    logger.mpi_debug("\n");
+    for (int64_t u = 0; u < _local_v_num; ++u) {
+      fprintf(stderr, "u %ld 's son\n", u);
+      for (auto iter = adja_beg(u); iter != adja_end(u); ++iter) {
+        fprintf(stderr, "%ld ", next_vertex(iter));
+      }
+      fprintf(stderr, "\n");
+    }
+  }
+
+  delete [] adja_size;
+  delete [] scatter_adja;
+  delete [] scatter_csr;
 
   MPI_Barrier(MPI_COMM_WORLD);
   logger.log("finishing constructing csr graph.\n");

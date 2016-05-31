@@ -74,7 +74,12 @@ mpi_local_num(int64_t total) {
 }
 
 inline int64_t
-mpi_vertex_own(int64_t index, int64_t average) {
+mpi_get_own(int64_t index, int64_t average) {
    return std::min(int(index/average), settings.mpi_size-1);
 }
 
+inline void
+mpi_log_barrier() {
+  MPI_Barrier(MPI_COMM_WORLD);
+  logger.log("------------------------ MPI Barrier ------------------------\n");
+}

@@ -268,26 +268,7 @@ void LocalCSRGraph::GatherEdges(const int64_t *adja_size,
   for (int64_t v = 0; v < _global_v_num; ++v) {
     int64_t receiver = mpi_get_own(v, average);
     int64_t local_v = v - _local_v_beg;
-    int64_t *send_buf = &scatter_csr[ scatter_adja[v].beg ];
-    int64_t *recv_buf {nullptr};
-    int64_t recv_size = 0;
-    // if (receiver == settings.mpi_rank) {
-      recv_buf = &_csr_head[ _adja_arrays[local_v].beg ];
-      recv_size = adja_size[v];
-    /// }
-
-    logger.mpi_debug("v %ld, send size: %ld, recv size: %ld "
-        "receiver %ld, begin %ld\n", v,
-        scatter_adja[v].end - scatter_adja[v].beg,
-        adja_size[v],
-        receiver,
-        _adja_arrays[local_v].beg);
-
-    MPI_Gather(send_buf, scatter_adja[v].end - scatter_adja[v].beg,
-        MPI_LONG_LONG,
-        recv_buf, adja_size[v],
-        MPI_LONG_LONG,
-        receiver, MPI_COMM_WORLD);
+    // TODO:
   }
   logger.mpi_log("%s() finishing.. \n", __func__);
 }

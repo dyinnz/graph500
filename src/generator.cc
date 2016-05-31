@@ -103,10 +103,8 @@ GenerateEdgeTuples(int64_t mpi_rank, double *U, double *V, int64_t local_edge_nu
     }
   }
   /*
-  if (0 == mpi_rank) {
-    for (int64_t e = 0; e < local_edge_num; ++e) {
-      printf("U %lf, V %lf\n", U[e], V[e]);
-    }
+  for (int64_t e = 0; e < local_edge_num; ++e) {
+    logger.mpi_debug("U %lf, V %lf\n", U[e], V[e]);
   }
   */
 }
@@ -124,6 +122,11 @@ ShuffleVertexes(int64_t mpi_rank,
   for (int64_t i = 0; i < vertex_num; ++i) {
     std::swap(permut_vertex[i], permut_vertex[gen()%(vertex_num-i)+i]);
   }
+  /*
+  for (int64_t i = 0; i < vertex_num; ++i) {
+    logger.debug("%d\n", permut_vertex[i]);
+  }
+  */
   for (int64_t e = 0; e < local_edge_num; ++e) {
     U[e] = permut_vertex[int64_t(U[e])];
     V[e] = permut_vertex[int64_t(V[e])];
@@ -131,38 +134,63 @@ ShuffleVertexes(int64_t mpi_rank,
   delete permut_vertex;
 
   /*
-  if (0 == mpi_rank) {
-    for (int64_t e = 0; e < local_edge_num; ++e) {
-      printf("U %lf, V %lf\n", U[e], V[e]);
-    }
+  for (int64_t e = 0; e < local_edge_num; ++e) {
+    logger.mpi_debug("shuffle U %lf, V %lf\n", U[e], V[e]);
   }
   */
 }
 
-static Edge*
-ShuffleEdges(int64_t mpi_rank, 
-             double *U, double *V, 
-             int64_t edge_desired_num) {
-  Edge *edges = new Edge[edge_desired_num];
-
+static void
+ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
   int64_t average = edge_desired_num / settings.mpi_size;
-  int64_t send_buf {0};
+  int64_t e_beg { -1 }, e_end { -1 };
+  tie(e_beg, e_end) = mpi_local_range(edge_desired_num);
+  double u_buf {0}, v_buf {0};
 
   std::mt19937_64 gen;
   for (int64_t e = 0; e < edge_desired_num; ++e) {
     int64_t i = gen() % (edge_desired_num-e) + e;
-    /*
-    if (i != e) {
-      int64_t receiver = mpi_vertex_own(e, average);
-      int64_t sender = mpi_vertex_own(i, average);
-      // swap index as e
-      if (mpi_rank == sender) {
-      } else if (mpi_rank == receiver) {
-      }
+    int64_t e_own = mpi_vertex_own(e, average);
+    int64_t i_own = mpi_vertex_own(i, average);
+
+    //logger.mpi_debug("e %ld, i %ld, e_own %ld, i_own %ld\n", 
+        //e, i, e_own, i_own);
+    //MPI_Barrier(MPI_COMM_WORLD);
+
+    if (e_own == i_own && i_own == mpi_rank)  {
+      // local swap
+      std::swap(U[e - e_beg], U[i - e_beg]);
+      std::swap(V[e - e_beg], V[i - e_beg]);
+
+    } else if (mpi_rank == e_own) {
+      MPI_Send(&U[e-e_beg], 1, MPI_DOUBLE, i_own, 0, MPI_COMM_WORLD);
+      MPI_Send(&V[e-e_beg], 1, MPI_DOUBLE, i_own, 0, MPI_COMM_WORLD);
+      MPI_Recv(&u_buf, 1, MPI_DOUBLE, i_own, 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      MPI_Recv(&v_buf, 1, MPI_DOUBLE, i_own, 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      U[e - e_beg] = u_buf;
+      V[e - e_beg] = v_buf;
+
+    } else if (mpi_rank == i_own) {
+      MPI_Recv(&u_buf, 1, MPI_DOUBLE, e_own, 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      MPI_Recv(&v_buf, 1, MPI_DOUBLE, e_own, 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      MPI_Send(&U[i-e_beg], 1, MPI_DOUBLE, e_own, 0, MPI_COMM_WORLD);
+      MPI_Send(&V[i-e_beg], 1, MPI_DOUBLE, e_own, 0, MPI_COMM_WORLD);
+      U[i - e_beg] = u_buf;
+      V[i - e_beg] = v_buf;
     }
-    */
   }
-  return edges;
+}
+
+static void 
+LoadEdges(double *U, double *V, Edge *edges, int64_t local_edge_num) {
+  for (int64_t e = 0; e < local_edge_num; ++e) {
+    edges[e].u = int64_t(U[e]);
+    edges[e].v = int64_t(V[e]);
+  }
 }
 
 LocalRawGraph
@@ -178,11 +206,21 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   auto V = new double[local_raw.edge_num];
   GenerateEdgeTuples(settings.mpi_rank, U, V, local_raw.edge_num);
   ShuffleVertexes(settings.mpi_rank, U, V, local_raw.edge_num, vertex_num);
-  local_raw.edges = ShuffleEdges(settings.mpi_rank, U, V, local_raw.edge_num);
+  ShuffleEdges(settings.mpi_rank, U, V, edge_desired_num);
+
+  /*
+  for (int64_t e = 0; e < local_raw.edge_num; ++e) {
+    logger.mpi_debug("edges: %.1lf\t%.1lf\n", U[e], V[e]);
+  }
+  */
+
+  local_raw.edges = new Edge[local_raw.edge_num];
+  LoadEdges(U, V, local_raw.edges, local_raw.edge_num);
+
   delete []U;
   delete []V;
 
+  logger.log("finish generating graph.\n");
   return local_raw;
 }
-
 

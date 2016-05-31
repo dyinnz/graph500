@@ -129,6 +129,9 @@ main(int argc, char *argv[]) {
   LocalRawGraph local_raw = MPIGenerateGraph(settings.vertex_num, 
                                              settings.edge_desired_num);
 
+  delete [] local_raw.edges;
+  local_raw.edges = nullptr;
+
 #if 0
   Edge *edges = GeneratorGraph(settings.vertex_num, settings.edge_desired_num);
 

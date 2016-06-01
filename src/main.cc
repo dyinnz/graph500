@@ -98,16 +98,16 @@ SampleKeys(LocalCSRGraph &local_csr) {
     // generate a random index
     int64_t index = rand_gen() % remain_vertex_num;
     MPI_Bcast(&index, 1, MPI_LONG_LONG, 0/*root*/, MPI_COMM_WORLD);
-    logger.debug("rand select index %ld\n", index);
+    // logger.debug("rand select index %ld\n", index);
 
     if (CheckConnection(local_csr, index)) {
       int64_t real_index = swap_map.find(index) == swap_map.end() ?
         index : swap_map[index];
       roots.push_back(real_index);
 
-      logger.debug("%ld map to %ld connect!\n", index, real_index);
+      // logger.debug("%ld map to %ld connect!\n", index, real_index);
     } else {
-      logger.debug("%ld not connect!\n", index);
+      // logger.debug("%ld not connect!\n", index);
     }
 
     // mark this index as invalid

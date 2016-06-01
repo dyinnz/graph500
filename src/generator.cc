@@ -218,10 +218,12 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   local_raw.edges = new Edge[local_raw.edge_num];
   LoadEdges(U, V, local_raw.edges, local_raw.edge_num);
 
+  /*
   for (int64_t e = 0; e < local_raw.edge_num; ++e) {
     logger.mpi_debug("edges: %ld\t%ld\n",
         local_raw.edges[e].u, local_raw.edges[e].v);
   }
+  */
 
   delete []U;
   delete []V;

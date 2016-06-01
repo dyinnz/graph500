@@ -53,10 +53,14 @@ class LocalCSRGraph {
     LocalCSRGraph(LocalRawGraph &local_raw) : _local_raw(local_raw) {}
 
     int64_t* csr_mem() { return _csr_mem.data(); }
+    int64_t csr_mem_size() { return _csr_mem.size(); }
+
     AdjacentPair* adja_arrays() { return _adja_arrays.data(); }
 
     int64_t global_v_num() { return _global_v_num; }
     int64_t local_v_num() { return _local_v_num; }
+    int64_t local_v_beg() { return _local_v_beg; }
+    int64_t local_v_end() { return _local_v_end; }
 
     int64_t adja_beg(int64_t u) { return _adja_arrays[u].beg; }
     int64_t adja_end(int64_t u) { return _adja_arrays[u].end; }

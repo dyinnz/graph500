@@ -89,9 +89,9 @@ GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num) {
 }
 
 static void
-GenerateEdgeTuples(int64_t mpi_rank, 
-                   int64_t scale, 
-                   double *U, double *V, 
+GenerateEdgeTuples(int64_t mpi_rank,
+                   int64_t scale,
+                   double *U, double *V,
                    int64_t local_edge_num) {
   // kronecker generator
   sitmo::prng_engine gen(settings.mpi_rank);
@@ -113,7 +113,7 @@ GenerateEdgeTuples(int64_t mpi_rank,
 }
 
 static void
-ShuffleVertexes(int64_t mpi_rank, 
+ShuffleVertexes(int64_t mpi_rank,
                 double *U, double *V,
                 int64_t local_edge_num,
                 int64_t vertex_num) {
@@ -156,7 +156,7 @@ ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
     int64_t e_own = mpi_get_owner(e, average);
     int64_t i_own = mpi_get_owner(i, average);
 
-    //logger.mpi_debug("e %ld, i %ld, e_own %ld, i_own %ld\n", 
+    //logger.mpi_debug("e %ld, i %ld, e_own %ld, i_own %ld\n",
         //e, i, e_own, i_own);
     //MPI_Barrier(MPI_COMM_WORLD);
 
@@ -188,7 +188,7 @@ ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
   }
 }
 
-static void 
+static void
 LoadEdges(double *U, double *V, Edge *edges, int64_t local_edge_num) {
   for (int64_t e = 0; e < local_edge_num; ++e) {
     edges[e].u = int64_t(U[e]);
@@ -210,7 +210,7 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
 
   auto U = new double[local_raw.edge_num];
   auto V = new double[local_raw.edge_num];
-  GenerateEdgeTuples(settings.mpi_rank, settings.scale, 
+  GenerateEdgeTuples(settings.mpi_rank, settings.scale,
       U, V, local_raw.edge_num);
   ShuffleVertexes(settings.mpi_rank, U, V, local_raw.edge_num, vertex_num);
   ShuffleEdges(settings.mpi_rank, U, V, edge_desired_num);
@@ -219,14 +219,14 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   LoadEdges(U, V, local_raw.edges, local_raw.edge_num);
 
   for (int64_t e = 0; e < local_raw.edge_num; ++e) {
-    logger.mpi_debug("edges: %ld\t%ld\n", 
+    logger.mpi_debug("edges: %ld\t%ld\n",
         local_raw.edges[e].u, local_raw.edges[e].v);
   }
 
   delete []U;
   delete []V;
 
-  mpi_log_barrier();
+  MPI_Barrier(MPI_COMM_WORLD);
   logger.log("finish generating graph.\n");
   return local_raw;
 }

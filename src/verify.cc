@@ -16,8 +16,8 @@ using std::vector;
 /**
  * @param[out]    levels
  */
-bool ComputeLevels(int64_t *bfs_tree, 
-                   int64_t vertex_num, 
+bool ComputeLevels(int64_t *bfs_tree,
+                   int64_t vertex_num,
                    int64_t root,
                    vector<int64_t> &levels) {
   int64_t *&parent = bfs_tree;

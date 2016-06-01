@@ -21,7 +21,7 @@ void LocalCSRGraph::GetVertexNumber() {
     max_vn = std::max(max_vn, raw_edge_u(e));
     max_vn = std::max(max_vn, raw_edge_v(e));
   }
-  MPI_Allreduce(MPI_IN_PLACE, &max_vn, 1, MPI_LONG_LONG, MPI_MAX, 
+  MPI_Allreduce(MPI_IN_PLACE, &max_vn, 1, MPI_LONG_LONG, MPI_MAX,
       MPI_COMM_WORLD);
   _global_v_num = max_vn + 1;
 
@@ -67,7 +67,7 @@ void LocalCSRGraph::SwapEdges() {
   MPI_Allreduce(MPI_IN_PLACE, edges_numbers.data(), mpi_size,
       MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
 
-  static_assert(sizeof(size_t) == sizeof(int64_t), 
+  static_assert(sizeof(size_t) == sizeof(int64_t),
       "the size of size_t and int64_t must be same");
 
   logger.mpi_log("desevered edges number: %ld\n", edges_numbers[mpi_rank]);
@@ -79,7 +79,7 @@ void LocalCSRGraph::SwapEdges() {
     if (base == mpi_rank) {
       Edge *offset = _edges.data();
       // copy from local raw edges
-      memcpy(offset, edges_lists[base].data(), 
+      memcpy(offset, edges_lists[base].data(),
           edges_lists[base].size() * sizeof(Edge));
       offset += edges_lists[base].size();
       // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
@@ -94,7 +94,7 @@ void LocalCSRGraph::SwapEdges() {
         int recv_count {0};
         MPI_Get_count(&status, MPI_LONG_LONG, &recv_count);
 
-        MPI_Recv(offset, recv_count, MPI_LONG_LONG, i, 0, 
+        MPI_Recv(offset, recv_count, MPI_LONG_LONG, i, 0,
             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         offset += recv_count / 2;
         // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
@@ -106,7 +106,7 @@ void LocalCSRGraph::SwapEdges() {
       }
     } else {
       // send to base
-      MPI_Send(edges_lists[base].data(), edges_lists[base].size() * 2, 
+      MPI_Send(edges_lists[base].data(), edges_lists[base].size() * 2,
           MPI_LONG_LONG, base, 0, MPI_COMM_WORLD);
     }
   }
@@ -143,7 +143,7 @@ void LocalCSRGraph::ComputeOffset() {
 
   /*
   for (int64_t v = 0; v < _local_v_num; ++v) {
-    logger.mpi_debug("adj beg %ld, end %d\n", 
+    logger.mpi_debug("adj beg %ld, end %d\n",
         _adja_arrays[v].beg, _adja_arrays[v].end);
   }
   */
@@ -191,7 +191,7 @@ void LocalCSRGraph::ConstructAdjacentArrays() {
 void LocalCSRGraph::Construct() {
   assert(_local_raw.edges);
   assert(_local_raw.edge_num > 0);
-  MPI_Barrier(MPI_COMM_WORLD);
+  mpi_log_barrier();
   logger.log("begin constructing csr graph...\n");
 
   GetVertexNumber();
@@ -204,4 +204,9 @@ void LocalCSRGraph::Construct() {
 
   MPI_Barrier(MPI_COMM_WORLD);
   logger.log("finish constructing csr graph.\n");
+}
+
+bool LocalCSRGraph::IsConnect(int64_t global_v) {
+  int64_t local_v = global_v - _local_v_beg;
+  return adja_beg(local_v) != adja_end(local_v);
 }

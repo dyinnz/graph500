@@ -38,7 +38,7 @@ class Logger {
     void debug(const char *format, ...) {
 #ifdef DEBUG
       if (0 == _mpi_rank && kDebug >= _filter_level) {
-        std::string s("[DEBUG] ");
+        std::string s("[DEBUG][ROOT] ");
         s.append(format);
         va_list va;
         va_start(va, format);
@@ -65,7 +65,7 @@ class Logger {
 
     void log(const char *format, ...) {
       if (0 == _mpi_rank && kLog >= _filter_level) {
-        std::string s("[LOG] ");
+        std::string s("[LOG][ROOT] ");
         s.append(format);
         va_list va;
         va_start(va, format);
@@ -89,7 +89,7 @@ class Logger {
 
     void error(const char *format, ...) {
       if (0 == _mpi_rank && kError >= _filter_level) {
-        std::string s("[ERROR] ");
+        std::string s("[ERROR][ROOT] ");
         s.append(format);
         va_list va;
         va_start(va, format);
@@ -126,7 +126,7 @@ class Logger {
     Level _filter_level {kLog};
     int _mpi_rank { -1 };
 
-  private: 
+  private:
     Logger(const Logger&) = delete;
     Logger& operator=(const Logger&) = delete;
 };

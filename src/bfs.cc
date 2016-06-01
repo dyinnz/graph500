@@ -10,26 +10,28 @@
 #include "utility.h"
 #include "construct.h"
 
-int64_t * __restrict__ g_adja_arrays {nullptr};
-int64_t * __restrict__ g_csr_mem {nullptr};
+int64_t * __restrict__ g_local_adja_arrays {nullptr};
+int64_t * __restrict__ g_local_csr_mem {nullptr};
 
 static inline int64_t adja_beg(int64_t u) {
-  return g_adja_arrays[u * 2];
+  return g_local_adja_arrays[u * 2];
 }
 
 static inline int64_t adja_end(int64_t u) {
-  return g_adja_arrays[u * 2 + 1];
+  return g_local_adja_arrays[u * 2 + 1];
 }
 
 static inline int64_t next_vertex(int64_t offset) {
-  return g_csr_mem[offset];
+  return g_local_csr_mem[offset];
+}
+
+void SettingCSRGraph(LocalCSRGraph &local_csr) {
+  g_local_adja_arrays = (int64_t*)local_csr.adja_arrays();
+  g_local_csr_mem = local_csr.csr_mem();
 }
 
 #if 0
-void SettingCSRGraph(CSRGraph &csr) {
-  g_adja_arrays = (int64_t*)csr.adja_arrays();
-  g_csr_head = csr.csr_head();
-}
+
 
 static int64_t *
 NaiveBFS(CSRGraph &csr, int64_t root) {
@@ -68,15 +70,18 @@ MPIBFS(CSRGraph &csr, int64_t root) {
   return bfs_tree;
 }
 
+#endif
+
 int64_t *
-BuildBFSTree(CSRGraph &csr, int64_t root) {
-  SettingCSRGraph(csr);
+BuildBFSTree(LocalCSRGraph &local_csr, int64_t root) {
+  mpi_log_barrier();
+  logger.log("begin bfs, root: %d...\n", root);
+  SettingCSRGraph(local_csr);
 
-  // logger.log("begin bfs, root: %d...\n", root);
-  int64_t *bfs_tree = NaiveBFS(csr, root);
+  int64_t *bfs_tree = new int64_t[local_csr.local_v_num()];
 
-  // logger.log("end bfs.\n");
+  MPI_Barrier(MPI_COMM_WORLD);
+  logger.log("end bfs.\n");
   return bfs_tree;
 }
 
-#endif

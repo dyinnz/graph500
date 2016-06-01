@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <vector>
+#include <unordered_map>
 #include <random>
 
 #include "unistd.h"
@@ -21,6 +22,7 @@ Logger logger;
 Settings settings;
 
 LocalRawGraph MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num);
+int64_t* BuildBFSTree(LocalCSRGraph &local_csr, int64_t root);
 bool VerifyBFSTree(int64_t *bfs_tree,
                    int64_t vertex_num,
                    int64_t root,
@@ -65,49 +67,75 @@ Initialize() {
   logger.log("Total desired edges : %d\n", settings.edge_desired_num);
 }
 
-#if 0
+static bool
+CheckConnection(LocalCSRGraph &local_csr, int64_t index) {
+  int64_t index_owner = mpi_get_owner(index,
+      settings.vertex_num / settings.mpi_size);
+
+  // only root and index owner work, all processes except root return false
+  if (0 == settings.mpi_rank && 0 == index_owner) {
+    return local_csr.IsConnect(index);
+
+  } else if (0 == settings.mpi_rank && 0 != index_owner) {
+    bool is_connect {false};
+    MPI_Recv(&is_connect, 1, MPI_CHAR, index_owner, 0,
+        MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    return is_connect;
+
+  } else if (0 != settings.mpi_rank && settings.mpi_rank == index_owner) {
+    bool is_connect = local_csr.IsConnect(index);
+    MPI_Send(&is_connect, 1, MPI_CHAR, 0/*root*/, 0, MPI_COMM_WORLD);
+    return false;
+
+  } else {
+    return false;
+  }
+}
+
 static vector<int64_t>
-SampleKeys(CSRGraph &csr) {
+SampleKeys(LocalCSRGraph &local_csr) {
+  mpi_log_barrier();
   logger.log("begin sampling %d keys...\n", settings.sample_num);
 
   vector<int64_t> roots;
-  vector<int64_t> connected;
   roots.reserve(settings.sample_num);
-  connected.reserve(settings.vertex_num);
+  std::unordered_map<int64_t, int64_t> swap_map;
 
-  // check connection
-  for (int64_t u = 0; u < settings.vertex_num; ++u) {
-    if (csr.adja_beg(u) < csr.adja_end(u)) {
-      connected.push_back(u);
-    }
-  }
-
-  // random select
   std::random_device rd;
   std::mt19937_64 rand_gen(rd());
-  int remain = settings.sample_num;
-  while (remain > 0 && !connected.empty()) {
-    int64_t index = rand_gen() % connected.size();
-    roots.push_back(connected[index]);
-    remain -= 1;
+  int64_t remain_vertex_num { settings.vertex_num };
+  while (roots.size() < settings.sample_num && remain_vertex_num > 0) {
 
-    connected[index] = connected.back();
-    connected.pop_back();
+    // generate a random index
+    int64_t index = rand_gen() % remain_vertex_num;
+    MPI_Bcast(&index, 1, MPI_LONG_LONG, 0/*root*/, MPI_COMM_WORLD);
+    logger.debug("rand select index %ld\n", index);
+
+    if (CheckConnection(local_csr, index)) {
+      int64_t real_index = swap_map.find(index) == swap_map.end() ?
+        index : swap_map[index];
+      roots.push_back(real_index);
+
+      logger.debug("%ld map to %ld connect!\n", index, real_index);
+    } else {
+      logger.debug("%ld not connect!\n", index);
+    }
+
+    // mark this index as invalid
+    remain_vertex_num -= 1;
+    swap_map[index] = remain_vertex_num;
+
   }
 
-  logger.log("finishing smapling: %d keys.\n", roots.size());
+  int size_buf {roots.size()};
+  MPI_Bcast(&size_buf, 1, MPI_INT, 0/*root*/, MPI_COMM_WORLD);
+  roots.resize(size_buf);
+  MPI_Bcast(roots.data(), roots.size(), MPI_INT, 0/*root*/, MPI_COMM_WORLD);
 
-  /*
-  for (int64_t u : roots) {
-    printf("%ld ", u);
-  }
-  printf("\n");
-  */
-
+  MPI_Barrier(MPI_COMM_WORLD);
+  logger.log("sample %zu keys\n", roots.size());
   return roots;
 }
-
-#endif
 
 int
 main(int argc, char *argv[]) {
@@ -116,7 +144,7 @@ main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &settings.mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &settings.mpi_size);
-  fprintf(stderr, "--- MPI world: rank %d, size %d ---\n", 
+  fprintf(stderr, "--- MPI world: rank %d, size %d ---\n",
       settings.mpi_rank, settings.mpi_size);
 
   logger.set_mpi_rank(settings.mpi_rank);
@@ -128,12 +156,21 @@ main(int argc, char *argv[]) {
   ParseParameters(argc, argv);
   Initialize();
 
-  LocalRawGraph local_raw = MPIGenerateGraph(settings.vertex_num, 
+  LocalRawGraph local_raw = MPIGenerateGraph(settings.vertex_num,
                                              settings.edge_desired_num);
 
   LocalCSRGraph local_csr(local_raw);
-
   local_csr.Construct();
+  vector<int64_t> roots = SampleKeys(local_csr);
+  for (auto root : roots) {
+    // Run BFS here
+    int64_t *bfs_tree = BuildBFSTree(local_csr, root);
+    delete []bfs_tree;
+
+  #ifdef DEBUG
+    break;
+  #endif
+  }
 
   delete [] local_raw.edges;
   local_raw.edges = nullptr;

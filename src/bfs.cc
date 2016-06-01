@@ -11,7 +11,7 @@
 #include "construct.h"
 
 int64_t * __restrict__ g_adja_arrays {nullptr};
-int64_t * __restrict__ g_csr_head {nullptr};
+int64_t * __restrict__ g_csr_mem {nullptr};
 
 static inline int64_t adja_beg(int64_t u) {
   return g_adja_arrays[u * 2];
@@ -22,9 +22,10 @@ static inline int64_t adja_end(int64_t u) {
 }
 
 static inline int64_t next_vertex(int64_t offset) {
-  return g_csr_head[offset];
+  return g_csr_mem[offset];
 }
 
+#if 0
 void SettingCSRGraph(CSRGraph &csr) {
   g_adja_arrays = (int64_t*)csr.adja_arrays();
   g_csr_head = csr.csr_head();
@@ -78,4 +79,4 @@ BuildBFSTree(CSRGraph &csr, int64_t root) {
   return bfs_tree;
 }
 
-
+#endif

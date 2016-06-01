@@ -20,9 +20,7 @@ using std::vector;
 Logger logger;
 Settings settings;
 
-Edge* GeneratorGraph(int64_t vertex_num, int64_t edge_desired_num);
 LocalRawGraph MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num);
-int64_t* BuildBFSTree(CSRGraph &csr, int64_t root);
 bool VerifyBFSTree(int64_t *bfs_tree,
                    int64_t vertex_num,
                    int64_t root,
@@ -67,6 +65,7 @@ Initialize() {
   logger.log("Total desired edges : %d\n", settings.edge_desired_num);
 }
 
+#if 0
 static vector<int64_t>
 SampleKeys(CSRGraph &csr) {
   logger.log("begin sampling %d keys...\n", settings.sample_num);
@@ -107,6 +106,8 @@ SampleKeys(CSRGraph &csr) {
 
   return roots;
 }
+
+#endif
 
 int
 main(int argc, char *argv[]) {

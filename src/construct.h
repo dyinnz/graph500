@@ -117,6 +117,8 @@ class LocalRawGraph;
 class LocalCSRGraph {
   private:
     LocalRawGraph &_local_raw;
+    std::vector<Edge> _edges;
+
     int64_t _local_v_num {0};
     int64_t _global_v_num {0};
     int64_t _local_v_beg {0};
@@ -132,8 +134,8 @@ class LocalCSRGraph {
     AdjacentPair *_adja_arrays {nullptr};
 
   private:
-    int64_t edge_u(int64_t e) { return _local_raw.edges[e].u; }
-    int64_t edge_v(int64_t e) { return _local_raw.edges[e].v; }
+    int64_t raw_edge_u(int64_t e) { return _local_raw.edges[e].u; }
+    int64_t raw_edge_v(int64_t e) { return _local_raw.edges[e].v; }
 
     void GetVertexNumber();
     void CountScatteredAdjacentSize(int64_t *adja_size);
@@ -144,6 +146,8 @@ class LocalCSRGraph {
     void GatherEdges(const int64_t *adja_size,
                      AdjacentPair *scatter_adja,
                      int64_t *scatter_csr);
+
+    void SwapEdges();
 
   public:
     LocalCSRGraph(LocalRawGraph &local_raw) : _local_raw(local_raw) {}

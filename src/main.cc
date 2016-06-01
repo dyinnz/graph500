@@ -115,7 +115,8 @@ main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &settings.mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &settings.mpi_size);
-  fprintf(stderr, "--- MPI world: rank %d, size %d ---\n", settings.mpi_rank, settings.mpi_size);
+  fprintf(stderr, "--- MPI world: rank %d, size %d ---\n", 
+      settings.mpi_rank, settings.mpi_size);
 
   logger.set_mpi_rank(settings.mpi_rank);
  #ifdef DEBUG
@@ -136,28 +137,8 @@ main(int argc, char *argv[]) {
   delete [] local_raw.edges;
   local_raw.edges = nullptr;
 
-#if 0
-  Edge *edges = GeneratorGraph(settings.vertex_num, settings.edge_desired_num);
-
-  CSRGraph csr(edges, settings.edge_desired_num);
-  csr.Construct();
-
-  vector<int64_t> roots = SampleKeys(csr);
-  for (auto root : roots) {
-    int64_t *bfs_tree = BuildBFSTree(csr, root);
-    VerifyBFSTree(bfs_tree, csr.vertex_num(), root, 
-        edges, settings.edge_desired_num);
-    delete bfs_tree;
-
-#ifdef DEBUG
-    break;
-#endif
-  }
-
-  delete []edges;
-#endif
-
   mpi_log_barrier();
+  logger.log("graph500 exit!\n");
   MPI_Finalize();
   return 0;
 }

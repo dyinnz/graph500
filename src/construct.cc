@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <vector>
 #include <tuple>
 #include <algorithm>
 
@@ -16,6 +17,7 @@
 using std::tuple;
 using std::make_tuple;
 using std::tie;
+using std::vector;
 
 void CSRGraph::GetVertexNumber() {
   assert(_edges);
@@ -156,8 +158,8 @@ CSRGraph& CSRGraph::Construct() {
 void LocalCSRGraph::GetVertexNumber() {
   int64_t max_vn { -1 };
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
-    max_vn = std::max(max_vn, edge_u(e));
-    max_vn = std::max(max_vn, edge_v(e));
+    max_vn = std::max(max_vn, raw_edge_u(e));
+    max_vn = std::max(max_vn, raw_edge_v(e));
   }
   MPI_Allreduce(MPI_IN_PLACE, &max_vn, 1, MPI_LONG_LONG, MPI_MAX, 
       MPI_COMM_WORLD);
@@ -170,6 +172,7 @@ void LocalCSRGraph::GetVertexNumber() {
   logger.mpi_log("vertex range: [%ld, %ld)\n", _local_v_beg, _local_v_end);
 }
 
+#if 0
 void LocalCSRGraph::CountScatteredAdjacentSize(int64_t *adja_size) {
   logger.mpi_log("%s\n", __func__);
   memset(adja_size, 0, sizeof(int64_t) * _global_v_num);
@@ -266,7 +269,7 @@ void LocalCSRGraph::GatherEdges(const int64_t *adja_size,
   int64_t average = _global_v_num / settings.mpi_size;
 
   for (int64_t v = 0; v < _global_v_num; ++v) {
-    int64_t receiver = mpi_get_own(v, average);
+    int64_t receiver = mpi_get_owner(v, average);
     int64_t local_v = v - _local_v_beg;
     // TODO:
   }
@@ -312,4 +315,99 @@ void LocalCSRGraph::Construct() {
   MPI_Barrier(MPI_COMM_WORLD);
   logger.log("finishing constructing csr graph.\n");
 }
+#endif
 
+void LocalCSRGraph::SwapEdges() {
+  uint64_t mpi_rank = settings.mpi_rank;
+  uint64_t mpi_size = settings.mpi_size;
+
+  // split raw edges
+  vector<vector<Edge>> edges_lists(mpi_size);
+  int64_t average = _global_v_num / mpi_size;
+
+  logger.mpi_debug("%s(): average: %ld\n", __func__, average);
+
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    Edge &edge = _local_raw.edges[e];
+    // skip self loop
+    if (edge.u != edge.v) {
+      int64_t u_owner = mpi_get_owner(edge.u, average),
+              v_owner = mpi_get_owner(edge.v, average);
+
+      if (u_owner == v_owner) {
+        edges_lists[u_owner].push_back(edge);
+
+      } else {
+        edges_lists[u_owner].push_back(edge);
+        edges_lists[v_owner].push_back(edge);
+      }
+    }
+  }
+
+  // get the number of edges
+  vector<int64_t> edges_numbers(mpi_size);
+  for (size_t r = 0; r < edges_numbers.size(); ++r) {
+    edges_numbers[r] = edges_lists[r].size();
+  }
+  MPI_Allreduce(MPI_IN_PLACE, edges_numbers.data(), mpi_size,
+      MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+
+  static_assert(sizeof(size_t) == sizeof(int64_t), 
+      "the size of size_t and int64_t must be same");
+
+  logger.mpi_log("desevered edges number: %ld\n", edges_numbers[mpi_rank]);
+
+  // swap edges one by one
+  _edges.resize(edges_numbers[mpi_rank]);
+  Edge *offset = _edges.data();
+  MPI_Status status;
+  memset(&status, 0, sizeof(MPI_Status));
+  // TODO: Warning, may overflow
+  int recv_count {0};
+  for (size_t base = 0; base < mpi_size; ++base) {
+    if (base == mpi_rank) {
+      memcpy(offset, edges_lists[base].data(), 
+          edges_lists[base].size() * sizeof(Edge));
+      offset += edges_lists[base].size();
+      // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
+
+      // base recv from other mpi processes
+      for (size_t i = 0; i < mpi_size; ++i) if (i != mpi_rank) {
+        MPI_Probe(i, 0, MPI_COMM_WORLD, &status);
+        MPI_Get_count(&status, MPI_LONG_LONG, &recv_count);
+        MPI_Recv(offset, recv_count, MPI_LONG_LONG, i, 0, 
+            MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        offset += recv_count / 2;
+        // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
+      }
+
+    } else {
+      // send to base
+      MPI_Send(edges_lists[base].data(), edges_lists[base].size() * 2, 
+          MPI_LONG_LONG, base, 0, MPI_COMM_WORLD);
+    }
+  }
+
+  if (offset - _edges.data() != _edges.size()) {
+    logger.error("the edges size if not corrected! get %ld, wish %zu\n",
+        offset - _edges.data(), _edges.size());
+  }
+
+  for (auto &edge : _edges) {
+    logger.mpi_debug("edge: u %ld, v %ld\n", edge.u, edge.v);
+  }
+}
+
+void LocalCSRGraph::Construct() {
+  assert(_local_raw.edges);
+  assert(_local_raw.edge_num > 0);
+  MPI_Barrier(MPI_COMM_WORLD);
+  logger.log("begin constructing csr graph...\n");
+
+  GetVertexNumber();
+
+  SwapEdges();
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  logger.log("finish constructing csr graph.\n");
+}

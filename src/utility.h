@@ -32,6 +32,7 @@ struct Edge {
 struct LocalRawGraph {
   Edge *edges;
   int64_t edge_num;
+  int64_t global_edge_num;
 };
 
 extern dy_logger::Logger logger;
@@ -74,12 +75,14 @@ mpi_local_num(int64_t total) {
 }
 
 inline int64_t
-mpi_get_own(int64_t index, int64_t average) {
-   return std::min(int(index/average), settings.mpi_size-1);
+mpi_get_owner(int64_t index, int64_t average) {
+   return std::min(index/average, int64_t(settings.mpi_size-1));
 }
 
 inline void
 mpi_log_barrier() {
   MPI_Barrier(MPI_COMM_WORLD);
+  fflush(stderr);
+  fflush(stdout);
   logger.log("------------------------ MPI Barrier ------------------------\n");
 }

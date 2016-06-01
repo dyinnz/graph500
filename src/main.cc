@@ -69,27 +69,16 @@ Initialize() {
 
 static bool
 CheckConnection(LocalCSRGraph &local_csr, int64_t index) {
+  bool is_connect {false};
+
   int64_t index_owner = mpi_get_owner(index,
       settings.vertex_num / settings.mpi_size);
-
-  // only root and index owner work, all processes except root return false
-  if (0 == settings.mpi_rank && 0 == index_owner) {
-    return local_csr.IsConnect(index);
-
-  } else if (0 == settings.mpi_rank && 0 != index_owner) {
-    bool is_connect {false};
-    MPI_Recv(&is_connect, 1, MPI_CHAR, index_owner, 0,
-        MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    return is_connect;
-
-  } else if (0 != settings.mpi_rank && settings.mpi_rank == index_owner) {
-    bool is_connect = local_csr.IsConnect(index);
-    MPI_Send(&is_connect, 1, MPI_CHAR, 0/*root*/, 0, MPI_COMM_WORLD);
-    return false;
-
-  } else {
-    return false;
+  if (settings.mpi_rank == index_owner) {
+    is_connect = local_csr.IsConnect(index);
   }
+  MPI_Allreduce(MPI_IN_PLACE, &is_connect, 1, MPI_CHAR, MPI_BOR,
+      MPI_COMM_WORLD);
+  return is_connect;
 }
 
 static vector<int64_t>
@@ -124,13 +113,7 @@ SampleKeys(LocalCSRGraph &local_csr) {
     // mark this index as invalid
     remain_vertex_num -= 1;
     swap_map[index] = remain_vertex_num;
-
   }
-
-  int size_buf {roots.size()};
-  MPI_Bcast(&size_buf, 1, MPI_INT, 0/*root*/, MPI_COMM_WORLD);
-  roots.resize(size_buf);
-  MPI_Bcast(roots.data(), roots.size(), MPI_INT, 0/*root*/, MPI_COMM_WORLD);
 
   MPI_Barrier(MPI_COMM_WORLD);
   logger.log("sample %zu keys\n", roots.size());

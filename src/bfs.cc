@@ -80,6 +80,8 @@ BuildBFSTree(LocalCSRGraph &local_csr, int64_t root) {
 
   int64_t *bfs_tree = new int64_t[local_csr.local_v_num()];
 
+
+
   MPI_Barrier(MPI_COMM_WORLD);
   logger.log("end bfs.\n");
   return bfs_tree;

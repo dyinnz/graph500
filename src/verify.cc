@@ -128,6 +128,8 @@ bool VerifyBFSTree(int64_t *bfs_tree,
 
 #endif
 
+const int Verifier::kMaxLevel = INT_MAX;
+
 bool
 Verifier::CheckRange() {
   for (int64_t v = 0; v < _local_v_num; ++v) {
@@ -175,14 +177,12 @@ Verifier::ComputeLevels() {
   bool result {true};
 
   // init
-  const int kMaxLevel {1 << 30} ;
-
   vector<bool> visited(_local_v_num, false);
   vector<int> parent_levels(_local_v_num, kMaxLevel);
   _levels.resize(_local_v_num, kMaxLevel);
 
   if (_local_v_beg <= _root && _root < _local_v_end) {
-    _levels[_root - _local_v_beg] = 10;
+    _levels[_root - _local_v_beg] = 0;
     visited[_root - _local_v_beg] = true;
   }
 
@@ -195,7 +195,7 @@ Verifier::ComputeLevels() {
       MPI_INFO_NULL, MPI_COMM_WORLD, _win);
 
   bool is_done {false};
-  for (int level = 11; !is_done; ++level) {
+  for (int level = 1; !is_done; ++level) {
     is_done = true;
 
     MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
@@ -249,6 +249,68 @@ Verifier::ComputeLevels() {
   return result;
 }
 
+bool
+Verifier::CheckEdges() {
+#ifdef DEBUG
+  mpi_log_barrier();
+#endif
+
+  bool result {true};
+
+  assert(_levels.size() == _local_v_num);
+
+  vector<std::pair<int, int>> edges_levels(_local_raw.edge_num, 
+                                           {kMaxLevel, kMaxLevel});
+  int64_t average = _global_v_num / settings.mpi_size;
+
+  // lambda for fetch level from local or remote
+  auto fetch_level = [&](int64_t global_v, int &out_level) {
+    int64_t onwer = mpi_get_owner(global_v, average);
+    if (onwer == settings.mpi_rank) {
+      out_level = _levels[global_v - _local_v_beg];
+
+    } else {
+      int64_t remote_local_v = global_v - onwer * average;
+      MPI_Get(&out_level, 1, MPI_INT, onwer, 
+          remote_local_v, 1, MPI_INT, *_win);
+    }
+  };
+
+  // logger.mpi_debug("begin of win fence\n");
+
+  // collect all levels needing
+  MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    fetch_level(raw_edge_u(e), edges_levels[e].first);
+    fetch_level(raw_edge_v(e), edges_levels[e].second);
+  }
+  MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
+
+  // logger.mpi_debug("end of win fence\n");
+
+  // calc
+  for (auto &level_p : edges_levels) {
+  /*for (int64_t e = 0; e < _local_raw.edge_num; ++e) {*/
+    /*auto &level_p = edges_levels[e];*/
+    if ((kMaxLevel == level_p.first && kMaxLevel != level_p.second) ||
+        (kMaxLevel != level_p.first && kMaxLevel == level_p.second)) {
+      logger.mpi_error("the levels of edges are not correct: u_l[%d],v_l[%d]\n",
+          level_p.first, level_p.second);
+      result = false;
+    }
+    if (abs(level_p.first - level_p.second) > 1) {
+      logger.mpi_error("the levels of edges are not correct: u_l[%d],v_l[%d]\n",
+          level_p.first, level_p.second);
+      result = false;
+    }
+
+     /*logger.mpi_debug("check edges[%ld] u_l[%d] v_l[%d] \n", e, level_p.first, level_p.second);*/
+  }
+
+  MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);
+  return result;
+}
+
 bool 
 Verifier::Verify() {
   bool result {true};
@@ -278,6 +340,12 @@ Verifier::Verify() {
     }
     logger.debug("ComputeLevels PASS\n");
 
+    if (!CheckEdges()) {
+      result = false;
+      break;
+    }
+    logger.debug("CheckEdges PASS\n");
+
   } while (false);
 
   MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);
@@ -304,7 +372,7 @@ TEST_BFSTree::Init() {
   if (0 == settings.mpi_rank) {
     parents = new int64_t[2];
     parents[0] = 0;
-    parents[1] = 2;
+    parents[1] = 0;
 
     raw.edge_num = 3;
     raw.edges = new Edge[raw.edge_num];
@@ -315,7 +383,7 @@ TEST_BFSTree::Init() {
   } else if (1 == settings.mpi_rank) {
     parents = new int64_t[3];
     parents[0] = 0;   // global 2
-    parents[1] = 2;   // global 3
+    parents[1] = 1;   // global 3
     parents[2] = -1;   // global 4
 
     raw.edge_num = 2;

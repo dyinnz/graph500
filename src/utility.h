@@ -40,11 +40,11 @@ extern Settings settings;
 
 class ScopeGuarder {
   public:
-    ScopeGuarder(std::function<void()> guard) : _guard(guard) {}
+    ScopeGuarder(std::function<void()> &guard) : _guard(guard) {}
     ~ScopeGuarder() { _guard();  }
 
   private:
-    std::function<void()> _guard;
+    std::function<void()> &_guard;
     ScopeGuarder& operator=(const ScopeGuarder&) = delete;
     ScopeGuarder& operator=(ScopeGuarder&&) = delete;
     ScopeGuarder(const ScopeGuarder&) = delete;

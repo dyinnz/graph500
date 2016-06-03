@@ -9,6 +9,7 @@
 #include <queue>
 #include "utility.h"
 #include "construct.h"
+#include "bfs_gpu.h"
 
 int64_t * __restrict__ g_local_adja_arrays {nullptr};
 int64_t * __restrict__ g_local_csr_mem {nullptr};
@@ -80,7 +81,7 @@ BuildBFSTree(LocalCSRGraph &local_csr, int64_t root) {
 
   int64_t *bfs_tree = new int64_t[local_csr.local_v_num()];
 
-
+  bfs_cu(root, g_local_adja_arrays, local_csr.local_v_num(), g_local_csr_mem, local_csr.csr_mem_size());
 
   MPI_Barrier(MPI_COMM_WORLD);
   logger.log("end bfs.\n");

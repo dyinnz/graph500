@@ -127,7 +127,8 @@ void bfs_cu(index_t root,
             index_t *beg_pos,
             const index_t vert_count,
             vertex_t *csr,
-            const index_t edge_count)
+            const index_t edge_count,
+            const index_t first_alpha=2)
 {
     srand(time(NULL));
     cudaSetDevice(0);
@@ -161,7 +162,7 @@ void bfs_cu(index_t root,
     backward_vertex_status[root] = 1;
     //------------------------------------------------------------------------
     //Allocating GPU memory:
-    printf("root = %d\n", root);
+    printf("root = %ld\n", root);
     index_t *d_adj_list_reverse;
     cudaMalloc((void**) &d_adj_list_reverse, sizeof(index_t)*edge_count);
     cudaMemcpy( d_adj_list_reverse, g->csr, sizeof(index_t)*edge_count, cudaMemcpyHostToDevice);

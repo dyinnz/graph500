@@ -14,119 +14,7 @@
 #include "verify.h"
 
 using std::vector;
-
-#if 0
-
-/**
- * @param[out]    levels
- */
-bool ComputeLevels(int64_t *bfs_tree,
-                   int64_t vertex_num,
-                   int64_t root,
-                   vector<int64_t> &levels) {
-  int64_t *&parent = bfs_tree;
-  bool ret {true};
-
-  levels[root] = 0;
-
-  // rebuild a real tree
-  vector<std::list<int64_t>> level_tree(vertex_num);
-  for (int64_t v = 0; v < vertex_num; ++v) {
-    int64_t u = parent[v];
-    if (-1 != u && v != root) {
-      level_tree[u].push_back(v);
-    }
-  }
-
-  std::queue<int64_t> q;
-  q.push(root);
-  while (!q.empty() && ret) {
-    int64_t u = q.front(); q.pop();
-    for (int64_t v : level_tree[u]) {
-      if (levels[v] > 0) {
-        logger.error("compute level error: u[%d] -> v[%d]\n"
-                     "may contain cycle!\n" , u, v);
-        ret = false;
-        break;
-      } else {
-        levels[v] = levels[u] + 1;
-        q.push(v);
-      }
-    }
-  }
-
-  /*
-  for (int64_t v = 0; v < vertex_num; ++v) {
-    printf("v[%ld] level: %ld\n", v, levels[v]);
-  }
-  */
-
-  if (ret) {
-    logger.log("compute level: PASS\n", ret);
-  } else {
-    logger.log("compute level: FAILED\n", ret);
-  }
-  return ret;
-}
-
-bool VerifyBFSTree(int64_t *bfs_tree,
-                   int64_t vertex_num,
-                   int64_t root,
-                   Edge *edges,
-                   int64_t edge_desired_num) {
-  bool ret {false};
-
-  if (root >= vertex_num) {
-    return false;
-  }
-
-  vector<int64_t> levels(vertex_num, -1);
-  if (!ComputeLevels(bfs_tree, vertex_num, root, levels)) {
-    return false;
-  }
-
-  for (int64_t v = 0; v < vertex_num; ++v) {
-    int64_t u = bfs_tree[v];
-    if (-1 == u || root == v) continue;
-    if (1 != abs(levels[u] - levels[v])) {
-      logger.error("the levels of u[%d] and v[%d] of edge in bfs tree do not differ by one\n", u, v);
-      return false;
-    }
-  }
-  logger.log("each tree edge connects vertices whose BFS levels differ by exactly one: PASS\n");
-
-  for (int64_t e = 0; e < edge_desired_num; ++e) {
-    int64_t u = edges[e].u;
-    int64_t v = edges[e].v;
-    if ((levels[v] < 0 && levels[u] >= 0) || (levels[v] >= 0 && levels[u] < 0)) {
-      logger.error("u[%d] and v[%d] of edge in raw edges array: one in bfs tree, one not\n", u, v);
-      return false;
-    }
-    if (abs(levels[u] - levels[v]) > 1) {
-      logger.error("the levels of u[%d] and v[%d] of edge in raw edges array differ more than one\n", u, v);
-      return false;
-    }
-  }
-  logger.log("every edge in the input list has vertices with levels that differ by at most one or that both are not in the BFS tree: PASS\n");
-
-  vector<bool> connected(vertex_num, false);
-  for (int64_t e = 0; e < edge_desired_num; ++e) {
-    int64_t u = edges[e].u;
-    int64_t v = edges[e].v;
-    if (u != v) {
-      connected[v] = connected[u] = true;
-    }
-  }
-  for (size_t v = 0; v < connected.size(); ++v) {
-    if (connected[v] && -1 == bfs_tree[v]) {
-      logger.error("v[%zu] is connected but not in bfs tree\n", v);
-    }
-  }
-  logger.log("the BFS tree spans an entire connected component's vertices: PASS\n");
-  return ret;
-}
-
-#endif
+using std::pair;
 
 const int Verifier::kMaxLevel = INT_MAX;
 
@@ -225,16 +113,16 @@ Verifier::ComputeLevels() {
         if (parent_levels[v] != level-1) {
           is_done = true;
           result = false;
-          logger.mpi_error("the parent of v[%ld] is not correct\n",
-              v + _local_v_beg);
+          //logger.mpi_error("the parent of v[%ld] is not correct\n",
+              //v + _local_v_beg);
 
         } else {
           _levels[v] = parent_levels[v] + 1;
           visited[v] = true;
           is_done = false;
 
-          logger.mpi_debug("update level of v[%ld] : level[%d]\n", 
-              v + _local_v_beg, _levels[v]);
+          //logger.mpi_debug("update level of v[%ld] : level[%d]\n", 
+              //v + _local_v_beg, _levels[v]);
         }
       }
     }
@@ -242,15 +130,15 @@ Verifier::ComputeLevels() {
     MPI_Allreduce(MPI_IN_PLACE, &is_done, 1, MPI_CHAR, MPI_LAND, MPI_COMM_WORLD);
   }
 
-  for (int64_t v = 0; v < _local_v_num; ++v) {
-    logger.mpi_debug("v[%ld]'s level is %d\n", v+_local_v_beg, _levels[v]);
-  }
+  //for (int64_t v = 0; v < _local_v_num; ++v) {
+    //logger.mpi_debug("v[%ld]'s level is %d\n", v+_local_v_beg, _levels[v]);
+  //}
 
   return result;
 }
 
 bool
-Verifier::CheckEdges() {
+Verifier::CheckEdgeDistance() {
 #ifdef DEBUG
   mpi_log_barrier();
 #endif
@@ -259,19 +147,19 @@ Verifier::CheckEdges() {
 
   assert(_levels.size() == _local_v_num);
 
-  vector<std::pair<int, int>> edges_levels(_local_raw.edge_num, 
+  vector<pair<int, int>> edges_levels(_local_raw.edge_num, 
                                            {kMaxLevel, kMaxLevel});
   int64_t average = _global_v_num / settings.mpi_size;
 
   // lambda for fetch level from local or remote
   auto fetch_level = [&](int64_t global_v, int &out_level) {
-    int64_t onwer = mpi_get_owner(global_v, average);
-    if (onwer == settings.mpi_rank) {
+    int64_t owner = mpi_get_owner(global_v, average);
+    if (owner == settings.mpi_rank) {
       out_level = _levels[global_v - _local_v_beg];
 
     } else {
-      int64_t remote_local_v = global_v - onwer * average;
-      MPI_Get(&out_level, 1, MPI_INT, onwer, 
+      int64_t remote_local_v = global_v - owner * average;
+      MPI_Get(&out_level, 1, MPI_INT, owner, 
           remote_local_v, 1, MPI_INT, *_win);
     }
   };
@@ -290,8 +178,6 @@ Verifier::CheckEdges() {
 
   // calc
   for (auto &level_p : edges_levels) {
-  /*for (int64_t e = 0; e < _local_raw.edge_num; ++e) {*/
-    /*auto &level_p = edges_levels[e];*/
     if ((kMaxLevel == level_p.first && kMaxLevel != level_p.second) ||
         (kMaxLevel != level_p.first && kMaxLevel == level_p.second)) {
       logger.mpi_error("the levels of edges are not correct: u_l[%d],v_l[%d]\n",
@@ -303,10 +189,106 @@ Verifier::CheckEdges() {
           level_p.first, level_p.second);
       result = false;
     }
-
-     /*logger.mpi_debug("check edges[%ld] u_l[%d] v_l[%d] \n", e, level_p.first, level_p.second);*/
   }
 
+  MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);
+  return result;
+}
+
+vector<pair<int64_t, int64_t>>
+Verifier::GetPairParents() {
+  vector<pair<int64_t, int64_t>> pair_parents(_local_raw.edge_num,
+      {-1, -1});
+
+  MPI_Win parents_win;
+  MPI_Win_create(_parents, _local_v_num * sizeof(int64_t), sizeof(int64_t),
+      MPI_INFO_NULL, MPI_COMM_WORLD, &parents_win);
+
+  int64_t average = _global_v_num / settings.mpi_size;
+
+  auto fetch_parent = [&](int64_t global_v, int64_t &parent) {
+    int64_t owner = mpi_get_owner(global_v, average);
+    if (owner == settings.mpi_rank) {
+      parent = _parents[global_v - _local_v_beg];
+
+    } else {
+      int64_t remote_local_v = global_v - owner * average;
+      MPI_Get(&parent, 1, MPI_LONG_LONG, owner,
+          remote_local_v, 1, MPI_LONG_LONG, parents_win);
+    }
+  };
+
+  MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, parents_win);
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    fetch_parent(raw_edge_u(e), pair_parents[e].first);
+    fetch_parent(raw_edge_v(e), pair_parents[e].second);
+  }
+  MPI_Win_fence(MPI_MODE_NOSUCCEED, parents_win);
+  MPI_Win_free(&parents_win);
+
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    //logger.mpi_debug("edge u: %ld<-%ld, v: %ld<-%ld\n", 
+        //raw_edge_u(e), pair_parents[e].first,
+        //raw_edge_v(e), pair_parents[e].second);
+  }
+
+  return pair_parents;
+}
+
+vector<int8_t> 
+Verifier::UpdateParentsValid(
+    const vector<pair<int64_t, int64_t>> &pair_parents) {
+  vector<int8_t> parents_valid(_local_v_num, false);
+  int64_t average = _global_v_num / settings.mpi_size;
+  int8_t kTrue {true};
+
+  // update valid
+  MPI_Win valid_win;
+  MPI_Win_create(parents_valid.data(), _local_v_num * sizeof(int8_t), 
+      sizeof(int8_t), MPI_INFO_NULL, MPI_COMM_WORLD, &valid_win);
+
+  auto update_valid = [&](int64_t global_v) {
+    int64_t owner = mpi_get_owner(global_v, average);
+    if (owner == settings.mpi_rank) {
+      parents_valid[global_v - _local_v_beg] = true;
+
+    } else {
+      int64_t remote_local_v = global_v - owner * average;
+      MPI_Put(&kTrue, 1, MPI_CHAR, owner,
+          remote_local_v, 1, MPI_CHAR, valid_win);
+    }
+  };
+
+  MPI_Win_fence(MPI_MODE_NOPRECEDE, valid_win);
+  for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+    int64_t global_u = raw_edge_u(e);
+    int64_t global_v = raw_edge_v(e);
+    if (global_v == pair_parents[e].first) {
+      // logger.mpi_debug("update edges %ld<-%ld\n", global_u, global_v);
+      update_valid(global_u);
+    } 
+    if (global_u == pair_parents[e].second) {
+      // logger.mpi_debug("update edges %ld<-%ld\n", global_v, global_u);
+      update_valid(global_v);
+    }
+  }
+  MPI_Win_fence(MPI_MODE_NOSUCCEED, valid_win);
+  MPI_Win_free(&valid_win);
+  return parents_valid;
+}
+
+bool
+Verifier::CheckTreeEdgeInGraph() {
+  vector<int8_t> parents_valid = UpdateParentsValid(GetPairParents());
+
+  bool result {true};
+  for (int64_t v = 0; v < _local_v_num; ++v) {
+    if (!parents_valid[v] && -1 != _parents[v] && _root != v+_local_v_beg) {
+      logger.mpi_error("one edge %ld<->%ld of bfs tree is not in raw graph\n",
+          v + _local_v_beg, _parents[v]);
+      result = false;
+    }
+  }
   MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);
   return result;
 }
@@ -340,11 +322,16 @@ Verifier::Verify() {
     }
     logger.debug("ComputeLevels PASS\n");
 
-    if (!CheckEdges()) {
+    if (!CheckEdgeDistance()) {
       result = false;
       break;
     }
-    logger.debug("CheckEdges PASS\n");
+    logger.debug("CheckEdgeDistance PASS\n");
+
+    if (!CheckTreeEdgeInGraph()) {
+      result = false;
+    }
+    logger.debug("CheckTreeEdgeInGraph PASS\n");
 
   } while (false);
 

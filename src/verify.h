@@ -30,7 +30,12 @@ class Verifier {
     bool CheckParentOfRoot();
     bool CheckParentOfOthers();
     bool ComputeLevels();
-    bool CheckEdges();
+    bool CheckEdgeDistance();
+
+    std::vector<std::pair<int64_t, int64_t>> GetPairParents();
+    std::vector<int8_t> UpdateParentsValid(
+        const std::vector<std::pair<int64_t, int64_t>> &pair_parents);
+    bool CheckTreeEdgeInGraph();
 
   public:
     Verifier(int64_t *parents, int64_t global_v_num, int64_t root, 

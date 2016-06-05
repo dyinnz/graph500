@@ -23,11 +23,8 @@ Settings settings;
 
 LocalRawGraph MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num);
 int64_t* BuildBFSTree(LocalCSRGraph &local_csr, int64_t root);
-bool VerifyBFSTree(int64_t *bfs_tree,
-                   int64_t vertex_num,
-                   int64_t root,
-                   Edge *edges,
-                   int64_t edge_desired_num);
+bool VerifyBFSTree(int64_t *parents, int64_t global_v_num, int64_t root, 
+    LocalRawGraph &local_raw);
 
 /*----------------------------------------------------------------------------*/
 
@@ -76,7 +73,7 @@ CheckConnection(LocalCSRGraph &local_csr, int64_t index) {
   if (settings.mpi_rank == index_owner) {
     is_connect = local_csr.IsConnect(index);
   }
-  MPI_Allreduce(MPI_IN_PLACE, &is_connect, 1, MPI_CHAR, MPI_BOR,
+  MPI_Allreduce(MPI_IN_PLACE, &is_connect, 1, MPI_CHAR, MPI_LOR,
       MPI_COMM_WORLD);
   return is_connect;
 }
@@ -139,6 +136,13 @@ main(int argc, char *argv[]) {
   ParseParameters(argc, argv);
   Initialize();
 
+#ifdef DEBUG
+  void TEST_VerifyCase_1();
+  TEST_VerifyCase_1();
+  MPI_Finalize();
+  return 0;
+#endif
+
   LocalRawGraph local_raw = MPIGenerateGraph(settings.vertex_num,
                                              settings.edge_desired_num);
 
@@ -148,6 +152,12 @@ main(int argc, char *argv[]) {
   for (auto root : roots) {
     // Run BFS here
     int64_t *bfs_tree = BuildBFSTree(local_csr, root);
+
+    if (VerifyBFSTree(bfs_tree, local_csr.global_v_num(), root, local_raw)) {
+      logger.log("verify bfs rooted %ld pass\n", root);
+    } else {
+      logger.error("verify bfs rooted %ld failed\n", root);
+    }
     delete []bfs_tree;
 
   #ifdef DEBUG

@@ -117,14 +117,17 @@ ShuffleVertexes(int64_t mpi_rank,
                 double *U, double *V,
                 int64_t local_edge_num,
                 int64_t vertex_num) {
-  auto permut_vertex = new int64_t[vertex_num];
+  std::vector<int64_t> permut_vertex(vertex_num);
   for (int64_t i = 0; i < vertex_num; ++i) {
     permut_vertex[i] = i;
   }
   std::mt19937_64 gen;
+  std::shuffle(permut_vertex.begin(), permut_vertex.end(), gen);
+  /*
   for (int64_t i = 0; i < vertex_num; ++i) {
     std::swap(permut_vertex[i], permut_vertex[gen()%(vertex_num-i)+i]);
   }
+  */
   /*
   for (int64_t i = 0; i < vertex_num; ++i) {
     logger.debug("%d\n", permut_vertex[i]);
@@ -134,7 +137,6 @@ ShuffleVertexes(int64_t mpi_rank,
     U[e] = permut_vertex[int64_t(U[e])];
     V[e] = permut_vertex[int64_t(V[e])];
   }
-  delete permut_vertex;
 
   /*
   for (int64_t e = 0; e < local_edge_num; ++e) {

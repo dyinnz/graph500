@@ -136,7 +136,7 @@ main(int argc, char *argv[]) {
   ParseParameters(argc, argv);
   Initialize();
 
-#ifdef DEBUG
+#if 0
   void TEST_VerifyCase_1();
   TEST_VerifyCase_1();
   MPI_Finalize();

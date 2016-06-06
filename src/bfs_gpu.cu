@@ -285,3 +285,115 @@ void bfs_cu(index_t root,
 }
 
 
+struct CudaInfo {
+};
+
+struct HostInformation {
+  int64_t root;
+  int64_t *adja_arrays;
+  int64_t local_v_num;
+  int64_t global_v_num;
+  int64_t *csr;
+  int64_t csr_edge_num;
+  int64_t *bfs_tree;
+};
+
+struct CudaGraphMemory {
+  int64_t *adja_arrays;
+  int64_t *local_v_num;
+  int64_t *global_v_num;
+  int64_t *csr;
+  int64_t *bfs_tree;
+};
+
+/*----------------------------------------------------------------------------*/
+
+void InitCudaDevice(CudaInfo &cuda_info) {
+}
+
+void HostAllocMemory(HostInformation &host_info) {
+}
+
+void HostFreeMemory(HostInformation &host_info) {
+}
+
+void SyncWithMPI(HostInformation &host_info, CudaGraphMemory &d_graph) {
+
+}
+
+void CudaAllocMemory(HostInformation &host_info, CudaGraphMemory &d_graph) {
+  cudaMalloc((void**)d_graph.adja_arrays, 
+      sizeof(int64_t) * host_info.local_v_num);
+  cudaMalloc((void**)d_graph.local_v_num, sizeof(int64_t));
+  cudaMalloc((void**)d_graph.global_v_num, sizeof(int64_t));
+  cudaMalloc((void**)d_graph.csr, sizeof(int64_t) * host_info.csr_edge_num);
+  cudaMalloc((void**)d_graph.bfs_tree, 
+      sizeof(int64_t) * host_info.local_v_num);
+
+  cudaMemcpy(d_graph.adja_arrays, host_info.adja_arrays,
+      sizeof(int64_t) * host_info.local_v_num, cudaMemcpyHostToDevice);
+  cudaMemcpy(d_graph.local_v_num, &host_info.local_v_num, 
+      sizeof(int64_t), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_graph.global_v_num, &host_info.global_v_num, 
+      sizeof(int64_t), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_graph.csr, host_info.csr, 
+      sizeof(int64_t) * host_info.csr_edge_num, cudaMemcpyHostToDevice);
+}
+
+void CudaFreeMemory(CudaGraphMemory &d_graph) {
+  cudaFree(d_graph.adja_arrays);
+  cudaFree(d_graph.local_v_num);
+  cudaFree(d_graph.global_v_num);
+  cudaFree(d_graph.csr);
+  cudaFree(d_graph.bfs_tree);
+}
+
+__global__ void BFSTopDown() {
+
+}
+
+__global__ void BFSBottomUp() {
+
+}
+
+void CudaBFS(int64_t root, 
+             int64_t *adja_arrays, 
+             int64_t local_v_num, 
+             int64_t global_v_num,
+             int64_t *csr,
+             int64_t csr_edge_num,
+             int64_t *bfs_tree) {
+  CudaInfo cuda_info;
+  HostInformation host_info = {
+      root,
+      adja_arrays,
+      local_v_num,
+      global_v_num,
+      csr,
+      csr_edge_num,
+      bfs_tree,
+  };
+  CudaGraphMemory d_graph;
+
+  InitCudaDevice(cuda_info);
+
+  HostAllocMemory(host_info);
+  CudaAllocMemory(host_info, d_graph);
+
+  do {
+
+    if (false) {
+      BFSTopDown<<<1,1>>>();
+    } else {
+      BFSBottomUp<<<1,1>>>();
+    }
+
+    SyncWithMPI(host_info, d_graph);
+
+  } while (false);
+ 
+  CudaFreeMemory(d_graph);
+  HostFreeMemory(host_info);
+}
+
+

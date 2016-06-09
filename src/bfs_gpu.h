@@ -9,11 +9,14 @@ void bfs_cu(index_t root,
             const index_t edge_count,
             const index_t fist_alpha=2);
 
-void CudaBFS(int64_t root, 
+void CudaBFS(int mpi_rank,
+             int mpi_size,
+             int64_t root, 
              int64_t *adja_arrays, 
              int64_t local_v_num, 
              int64_t global_v_num,
+             int64_t local_v_beg,
+             int64_t local_v_end,
              int64_t *csr,
              int64_t csr_edge_num,
              int64_t *bfs_tree);
-

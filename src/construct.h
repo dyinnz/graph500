@@ -53,7 +53,7 @@ class LocalCSRGraph {
     LocalCSRGraph(LocalRawGraph &local_raw) : _local_raw(local_raw) {}
 
     int64_t* csr_mem() { return _csr_mem.data(); }
-    int64_t csr_mem_size() { return _csr_mem.size(); }
+    int64_t csr_edge_num() { return _csr_mem.size(); }
 
     AdjacentPair* adja_arrays() { return _adja_arrays.data(); }
 

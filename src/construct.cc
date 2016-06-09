@@ -182,14 +182,12 @@ void LocalCSRGraph::ConstructAdjacentArrays() {
     }
   }
 
-  /*
   for (int64_t u = 0; u < _local_v_num; ++u) {
     logger.mpi_debug("u adja beg %ld, end %ld\n", adja_beg(u), adja_end(u));
     for (auto iter = adja_beg(u); iter != adja_end(u); ++iter) {
       logger.mpi_debug("adja: %ld -> %ld\n", u+_local_v_beg, next_vertex(iter));
     }
   }
-  */
 }
 
 void LocalCSRGraph::Construct() {

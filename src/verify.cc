@@ -295,6 +295,7 @@ Verifier::CheckTreeEdgeInGraph() {
 
 bool 
 Verifier::Verify() {
+  mpi_log_barrier();
   logger.log("Run %s()\n", __func__);
   bool result {true};
 

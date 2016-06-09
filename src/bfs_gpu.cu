@@ -335,7 +335,7 @@ struct CudaGraphMemory {
 };
 
 #define debug_print(__format, ...) do { \
-  printf("RANK[%d] %s(): "__format, host_info.mpi_rank, __func__, ##__VA_ARGS__); \
+  printf("RANK-%d %s(): "__format, host_info.mpi_rank, __func__, ##__VA_ARGS__); \
 } while (false);
 
 /*----------------------------------------------------------------------------*/
@@ -354,8 +354,8 @@ void InitHostInfo(HostInfo &host_info) {
 
 void InitCudaDevice(CudaInfo &cuda_info) {
   // TODO: change this value
-  cuda_info.blocks_number = 1;
-  cuda_info.threads_per_block = 32;
+  cuda_info.blocks_number = 8;
+  cuda_info.threads_per_block = 64;
 }
 
 void HostAllocMemory(HostInfo &host_info) {
@@ -476,11 +476,11 @@ void CopyBFSTree(HostInfo &host_info, CudaGraphMemory &d_graph) {
 void CudaAllocMemory(HostInfo &host_info, CudaGraphMemory &d_graph) {
   // alloc and copy
   cudaMalloc((void**)&d_graph.adja_arrays, 
-      sizeof(int64_t) * host_info.local_v_num);
+      sizeof(int64_t) * host_info.local_v_num * 2);
   cudaMalloc((void**)&d_graph.csr, sizeof(int64_t) * host_info.csr_edge_num);
 
   cudaMemcpy(d_graph.adja_arrays, host_info.adja_arrays,
-      sizeof(int64_t) * host_info.local_v_num, cudaMemcpyHostToDevice);
+      sizeof(int64_t) * host_info.local_v_num * 2, cudaMemcpyHostToDevice);
   cudaMemcpy(d_graph.csr, host_info.csr, 
       sizeof(int64_t) * host_info.csr_edge_num, cudaMemcpyHostToDevice);
 
@@ -554,13 +554,16 @@ __global__ void BFSBottomUp(int64_t *adja_arrays,
     int64_t global_v = local_to_global(local_v);
     if (-1 == bfs_tree[local_v]) {
 
-      printf("v [%ld] not visited\n", global_v);
+      printf("v [%ld] not visited, beg %ld, end %ld\n", 
+          global_v, adja_arrays[2*local_v], adja_arrays[2*local_v+1]);
 
-      for (int64_t offset = adja_arrays[local_v]; 
-          offset < adja_arrays[local_v+1]; ++offset) {
+      for (int64_t iter = adja_arrays[2*local_v]; 
+          iter < adja_arrays[2*local_v+1]; ++iter) {
+
+        int64_t global_u = csr[iter];
+        printf("v[%ld] <-> u[%ld]\n", global_v, global_u);
 
         // its parent havs been visited
-        int64_t global_u = csr[offset];
         if (global_bitmap[global_u]) {
 
           printf("get v[%ld] 's parent global_u %ld\n", global_v, global_u);
@@ -624,6 +627,7 @@ void CudaBFS(int mpi_rank,
   debug_print("global_v_num: %ld\n", host_info.global_v_num);
   debug_print("local_v_beg: %ld\n", host_info.local_v_beg);
   debug_print("local_v_end: %ld\n", host_info.local_v_end);
+  debug_print("csr_edge_num: %ld\n", host_info.csr_edge_num);
   debug_print("average: %ld\n", host_info.average);
   debug_print("remainder: %ld\n", host_info.global_v_num % host_info.mpi_size);
 
@@ -638,6 +642,16 @@ void CudaBFS(int mpi_rank,
   }
   debug_print("--------------------------\n");
   MPI_Barrier(MPI_COMM_WORLD);
+
+  for (int64_t u = 0; u < host_info.local_v_num; ++u) {
+    int64_t beg = host_info.adja_arrays[2*u],
+            end = host_info.adja_arrays[2*u+1];
+    debug_print("before cuda u adja beg %ld, end %ld\n", beg, end);
+    for (int64_t iter = beg; iter != end; ++iter) {
+      debug_print("before cuda: %ld -> %ld\n", 
+          u+host_info.local_v_beg, host_info.csr[iter]);
+    }
+  }
 
   do {
 
@@ -655,12 +669,12 @@ void CudaBFS(int mpi_rank,
     }
 
     SyncWithMPI(host_info, d_graph);
-    cudaDeviceSynchronize();
 
   } while (host_info.change);
 
   CopyBFSTree(host_info, d_graph);
 
+  cudaDeviceSynchronize();
 
   CudaFreeMemory(d_graph);
   HostFreeMemory(host_info);

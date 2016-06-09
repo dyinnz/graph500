@@ -4,6 +4,7 @@
 #include <set>
 #include <string.h>
 #include <queue>
+#include <mpi.h>
 //#include "translator_json_csr.h"
 #include "wtime.h"
 #include "graph.h"
@@ -284,97 +285,242 @@ void bfs_cu(index_t root,
     cudaFree(d_change);
 }
 
+/*----------------------------------------------------------------------------*/
+// distributed graph for cuda
+
+// global device variables
+
+__device__ int      gd_mpi_rank;
+__device__ int      gd_mpi_size;
+__device__ int64_t  gd_local_v_num;
+__device__ int64_t  gd_global_v_num;
+__device__ int64_t  gd_local_v_beg;
+__device__ int64_t  gd_local_v_end;
+__device__ int64_t  gd_average;
 
 struct CudaInfo {
+  int64_t blocks_number;
+  int64_t threads_per_block;
 };
 
-struct HostInformation {
+struct HostInfo {
+  int64_t mpi_rank;
+  int64_t mpi_size;
   int64_t root;
   int64_t *adja_arrays;
   int64_t local_v_num;
   int64_t global_v_num;
+  int64_t local_v_beg;
+  int64_t local_v_end;
   int64_t *csr;
   int64_t csr_edge_num;
   int64_t *bfs_tree;
+  // calc
+  int64_t average;
+  bool change;
+  /*int64_t mpi_local_v_num;*/
+  /*int64_t mpi_global_v_num;*/
+  // tmp
+  bit_type *local_bitmap;
+  bit_type *global_bitmap;
 };
 
 struct CudaGraphMemory {
   int64_t *adja_arrays;
-  int64_t *local_v_num;
-  int64_t *global_v_num;
   int64_t *csr;
   int64_t *bfs_tree;
+  bit_type *local_bitmap;
+  bit_type *global_bitmap;
+  bool *p_change;
 };
 
 /*----------------------------------------------------------------------------*/
 
+void InitHostInfo(HostInfo &host_info) {
+  // buffer size of all gather
+  /*
+  host_info.mpi_local_v_num = host_info.local_v_num;
+  MPI_Allreduce(MPI_IN_PLACE, &host_info.local_v_num, 1, MPI_LONG_LONG,
+      MPI_MAX, MPI_COMM_WORLD);
+  host_info.mpi_global_v_num = host_info.mpi_local_v_num * host_info.mpi_size;
+  */
+  host_info.average = host_info.global_v_num / host_info.mpi_size;
+  host_info.change = 0;
+}
+
 void InitCudaDevice(CudaInfo &cuda_info) {
+  // TODO: change this value
+  cuda_info.blocks_number = 256; 
+  cuda_info.threads_per_block = 256;
 }
 
-void HostAllocMemory(HostInformation &host_info) {
+void HostAllocMemory(HostInfo &host_info) {
+  host_info.local_bitmap = new bit_type[host_info.local_v_num];
+  host_info.global_bitmap = new bit_type[host_info.global_v_num];
 }
 
-void HostFreeMemory(HostInformation &host_info) {
+void HostFreeMemory(HostInfo &host_info) {
+  delete []host_info.local_bitmap;
+  delete []host_info.local_bitmap;
 }
 
-void SyncWithMPI(HostInformation &host_info, CudaGraphMemory &d_graph) {
+void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
 
+
+  // without gpu direct
+  // bottom up
+  cudaMemcpy(d_graph.global_bitmap, host_info.global_bitmap,
+      sizeof(bit_type) * host_info.global_v_num, cudaMemcpyDeviceToHost);
+
+  // all mpi processes have the average vertexes at least
+  MPI_Allgather(host_info.local_bitmap, host_info.average, MPI_BYTE,
+      host_info.global_bitmap, host_info.average, MPI_BYTE,
+      MPI_COMM_WORLD);
+  
+  int64_t remainder = host_info.global_v_num % host_info.mpi_size;
+  bit_type *address = host_info.global_bitmap + host_info.global_v_num 
+    - remainder;
+  MPI_Scatter(address, remainder, MPI_BYTE, address, remainder, MPI_BYTE,
+      host_info.mpi_size-1, MPI_COMM_WORLD);
+
+  cudaMemcpy(d_graph.global_bitmap, host_info.global_bitmap, 
+      sizeof(bit_type) * host_info.global_v_num, cudaMemcpyHostToDevice);
 }
 
-void CudaAllocMemory(HostInformation &host_info, CudaGraphMemory &d_graph) {
-  cudaMalloc((void**)d_graph.adja_arrays, 
+void CudaAllocMemory(HostInfo &host_info, CudaGraphMemory &d_graph) {
+  // alloc and copy
+  cudaMalloc((void**)&d_graph.adja_arrays, 
       sizeof(int64_t) * host_info.local_v_num);
-  cudaMalloc((void**)d_graph.local_v_num, sizeof(int64_t));
-  cudaMalloc((void**)d_graph.global_v_num, sizeof(int64_t));
-  cudaMalloc((void**)d_graph.csr, sizeof(int64_t) * host_info.csr_edge_num);
-  cudaMalloc((void**)d_graph.bfs_tree, 
-      sizeof(int64_t) * host_info.local_v_num);
+  cudaMalloc((void**)&d_graph.csr, sizeof(int64_t) * host_info.csr_edge_num);
 
   cudaMemcpy(d_graph.adja_arrays, host_info.adja_arrays,
       sizeof(int64_t) * host_info.local_v_num, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_graph.local_v_num, &host_info.local_v_num, 
-      sizeof(int64_t), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_graph.global_v_num, &host_info.global_v_num, 
-      sizeof(int64_t), cudaMemcpyHostToDevice);
   cudaMemcpy(d_graph.csr, host_info.csr, 
       sizeof(int64_t) * host_info.csr_edge_num, cudaMemcpyHostToDevice);
+
+  // alloc and clear
+  cudaMalloc((void**)&d_graph.bfs_tree,
+      sizeof(int64_t) * host_info.local_v_num);
+  cudaMalloc((void**)&d_graph.local_bitmap,
+      sizeof(bit_type) * host_info.local_v_num);
+      /*sizeof(bit_type) * host_info.mpi_local_v_num);*/
+  cudaMalloc((void**)&d_graph.global_bitmap,
+      sizeof(bit_type) * host_info.global_v_num);
+      /*sizeof(bit_type) * host_info.mpi_global_v_num);*/
+  cudaMalloc((void**)&d_graph.p_change, sizeof(bool));
+  cudaMemset(d_graph.bfs_tree, -1, sizeof(int64_t) * host_info.local_v_num);
+  cudaMemset(d_graph.local_bitmap, 0, 
+      sizeof(bit_type) * host_info.local_v_num);
+      /*sizeof(bit_type) * host_info.mpi_local_v_num);*/
+  cudaMemset(d_graph.global_bitmap, 0,
+      sizeof(bit_type) * host_info.global_v_num);
+      /*sizeof(bit_type) * host_info.mpi_global_v_num);*/
+  cudaMemset(d_graph.p_change, 0, sizeof(bool));
+
+  // just copy
+  cudaMemcpy(&gd_mpi_rank, &host_info.mpi_rank, 
+      sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(&gd_mpi_size, &host_info.mpi_size, 
+      sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(&gd_local_v_num, &host_info.local_v_num, 
+      sizeof(int64_t), cudaMemcpyHostToDevice);
+  cudaMemcpy(&gd_global_v_num, &host_info.global_v_num, 
+      sizeof(int64_t), cudaMemcpyHostToDevice);
+  cudaMemcpy(&gd_local_v_beg, &host_info.local_v_beg, 
+      sizeof(int64_t), cudaMemcpyHostToDevice);
+  cudaMemcpy(&gd_local_v_end, &host_info.local_v_end, 
+      sizeof(int64_t), cudaMemcpyHostToDevice);
+
+  int64_t average = host_info.global_v_num / host_info.mpi_size;
+  cudaMemcpy(&gd_average, &average, 
+      sizeof(int64_t), cudaMemcpyHostToDevice);
 }
 
 void CudaFreeMemory(CudaGraphMemory &d_graph) {
   cudaFree(d_graph.adja_arrays);
-  cudaFree(d_graph.local_v_num);
-  cudaFree(d_graph.global_v_num);
   cudaFree(d_graph.csr);
   cudaFree(d_graph.bfs_tree);
+  cudaFree(d_graph.local_bitmap);
+  cudaFree(d_graph.global_bitmap);
+}
+
+__device__ int64_t local_to_global(int64_t local) {
+  return gd_local_v_beg + local;
+}
+
+__device__ int64_t global_to_local(int64_t global) {
+  return global - gd_local_v_beg;
 }
 
 __global__ void BFSTopDown() {
 
 }
 
-__global__ void BFSBottomUp() {
+__global__ void BFSBottomUp(int64_t *adja_arrays,
+                            int64_t *csr,
+                            int64_t *bfs_tree,
+                            bit_type *local_bitmap,
+                            bit_type *global_bitmap) {
 
+  const int64_t local_v_num  = gd_local_v_num;
+  // const int64_t global_v_num = *p_global_v_num;
+  const int64_t kThreadsNumber = blockDim.x * gridDim.x;
+
+  for (int64_t local_u = blockIdx.x*blockDim.x + threadIdx.x;
+      local_u < local_v_num; local_u += kThreadsNumber) {
+
+    // unvisited
+    int64_t global_u = local_to_global(local_u);
+    if (!global_bitmap[global_u]) {
+
+      for (int64_t offset = adja_arrays[global_u]; 
+          offset < adja_arrays[global_u+1]; ++offset) {
+
+        // its parent havs been visited
+        int64_t global_v = csr[offset];
+        if (-1 != bfs_tree[global_v]) {
+
+          int64_t local_v = global_to_local(global_v);
+          local_bitmap[local_v] = true;
+          bfs_tree[local_v] = global_u;
+        }
+      }
+    }
+  }
 }
 
-void CudaBFS(int64_t root, 
+void CudaBFS(int mpi_rank,
+             int mpi_size,
+             int64_t root, 
              int64_t *adja_arrays, 
              int64_t local_v_num, 
              int64_t global_v_num,
+             int64_t local_v_beg,
+             int64_t local_v_end,
              int64_t *csr,
              int64_t csr_edge_num,
              int64_t *bfs_tree) {
   CudaInfo cuda_info;
-  HostInformation host_info = {
-      root,
-      adja_arrays,
-      local_v_num,
-      global_v_num,
-      csr,
-      csr_edge_num,
-      bfs_tree,
+  HostInfo host_info = {
+    mpi_rank,
+    mpi_size,
+    root,
+    adja_arrays,
+    local_v_num,
+    global_v_num,
+    local_v_beg,
+    local_v_end,
+    csr,
+    csr_edge_num,
+    bfs_tree,
+    0,
+    0,
+    0,
+    0,
   };
   CudaGraphMemory d_graph;
 
+  InitHostInfo(host_info);
   InitCudaDevice(cuda_info);
 
   HostAllocMemory(host_info);
@@ -383,9 +529,16 @@ void CudaBFS(int64_t root,
   do {
 
     if (false) {
-      BFSTopDown<<<1,1>>>();
+      BFSTopDown<<<cuda_info.blocks_number, cuda_info.threads_per_block>>>(
+          );
     } else {
-      BFSBottomUp<<<1,1>>>();
+      BFSBottomUp<<<cuda_info.blocks_number, cuda_info.threads_per_block>>>(
+          d_graph.adja_arrays,
+          d_graph.csr,
+          d_graph.bfs_tree,
+          d_graph.local_bitmap,
+          d_graph.global_bitmap
+          );
     }
 
     SyncWithMPI(host_info, d_graph);

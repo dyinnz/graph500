@@ -82,9 +82,7 @@ BuildBFSTree(LocalCSRGraph &local_csr, int64_t root) {
   int64_t *bfs_tree = new int64_t[local_csr.local_v_num()];
 
   //bfs_cu(root, g_local_adja_arrays, local_csr.local_v_num(), g_local_csr_mem, local_csr.csr_mem_size());
-  CudaBFS(settings.mpi_rank,
-      settings.mpi_size,
-      root,
+  CudaBFS(root,
       g_local_adja_arrays,
       local_csr.local_v_num(),
       local_csr.global_v_num(),

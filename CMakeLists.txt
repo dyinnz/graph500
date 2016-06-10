@@ -11,6 +11,7 @@ include_directories(${CUDA_INCLUDE})
 file(GLOB Srcs ./src/*.cc)
 file(GLOB CuSrcs ./src/*.cu ./src/*.cuh)
 
+list(APPEND CUDA_NVCC_FLAGS "-std=c++11;")
 cuda_compile(CUDA_O ${CuSrcs})
 
 add_executable(graph500 ${Srcs} ${CUDA_O})

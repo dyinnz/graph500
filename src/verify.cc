@@ -37,7 +37,6 @@ Verifier::CheckParentOfRoot() {
   logger.mpi_debug("%s()\n", __func__);
   int64_t average = _global_v_num / settings.mpi_size;
   if (mpi_get_owner(_root, average) == settings.mpi_rank) {
-    logger.mpi_debug("test\n");
     int64_t local_root = _root - _local_v_beg;
     if (_parents[local_root] != _root) {
       logger.mpi_error("%s(): Verify root[%ld]'s parent FAILED\n", _root);
@@ -337,12 +336,6 @@ Verifier::Verify() {
       break;
     }
     logger.mpi_debug("ComputeLevels PASS\n");
-
-    result = CheckEdgeDistance();
-    if (!sync_result()) {
-      break;
-    }
-    logger.mpi_debug("CheckEdgeDistance PASS\n");
 
     result = CheckEdgeDistance();
     if (!sync_result()) {

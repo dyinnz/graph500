@@ -1,13 +1,12 @@
 #!/bin/bash
 
-eval `modulecmd sh load gcc/6.1.0-dy`
-eval `modulecmd sh load intel/icc-16.0.3`
-
+eval `modulecmd sh load mpi/openmpi-x86_64`
+eval `modulecmd sh load gcc/4.9.3`
 
 thread=20
 
-export CC=icc
-export CXX=icpc
+export CC=gcc
+export CXX=g++
 
 $CC -v
 $CXX -v

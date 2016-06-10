@@ -20,10 +20,11 @@ const int Verifier::kMaxLevel = INT_MAX;
 
 bool
 Verifier::CheckRange() {
+  logger.mpi_debug("%s()\n", __func__);
   for (int64_t v = 0; v < _local_v_num; ++v) {
     int64_t u = _parents[v];
     if (! (-1 == u || (0 <= u && u < _global_v_num)) ) {
-      logger.mpi_log("%s(): verify %ld 's parent '%ld FAILED!\n", 
+      logger.mpi_error("%s(): verify %ld 's parent '%ld FAILED!\n", 
           __func__, v, u);
       return false;
     }
@@ -33,11 +34,13 @@ Verifier::CheckRange() {
 
 bool
 Verifier::CheckParentOfRoot() {
+  logger.mpi_debug("%s()\n", __func__);
   int64_t average = _global_v_num / settings.mpi_size;
   if (mpi_get_owner(_root, average) == settings.mpi_rank) {
+    logger.mpi_debug("test\n");
     int64_t local_root = _root - _local_v_beg;
     if (_parents[local_root] != _root) {
-      logger.mpi_log("%s(): Verify root[%ld]'s parent FAILED\n", _root);
+      logger.mpi_error("%s(): Verify root[%ld]'s parent FAILED\n", _root);
       return false;
     }
   }
@@ -46,13 +49,14 @@ Verifier::CheckParentOfRoot() {
 
 bool 
 Verifier::CheckParentOfOthers() {
+  logger.mpi_debug("%s()\n", __func__);
   int64_t average = _global_v_num / settings.mpi_size;
   for (int64_t v = 0; v < _local_v_num; ++v) {
     int64_t global_u = _parents[v];
     int64_t global_v = v + _local_v_beg;
     if (global_v != _root) {
       if (_parents[v] == global_v) {
-        logger.mpi_log("%s(): Verify v[%ld]'s parent FAILED\n", global_v);
+        logger.mpi_error("%s(): Verify v[%ld]'s parent FAILED\n", global_v);
         return false;
       }
     }
@@ -62,6 +66,7 @@ Verifier::CheckParentOfOthers() {
 
 bool
 Verifier::ComputeLevels() {
+  logger.mpi_debug("%s():\n", __func__);
   bool result {true};
 
   // init
@@ -85,6 +90,8 @@ Verifier::ComputeLevels() {
   bool is_done {false};
   for (int level = 1; !is_done; ++level) {
     is_done = true;
+
+    logger.mpi_debug("compute levels %d\n", level);
 
     MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
     // skip unconnected vertex
@@ -139,6 +146,7 @@ Verifier::ComputeLevels() {
 
 bool
 Verifier::CheckEdgeDistance() {
+  logger.mpi_debug("%s()\n", __func__);
 #ifdef DEBUG
   mpi_log_barrier();
 #endif
@@ -279,6 +287,7 @@ Verifier::UpdateParentsValid(
 
 bool
 Verifier::CheckTreeEdgeInGraph() {
+  logger.mpi_debug("%s()\n", __func__);
   vector<int8_t> parents_valid = UpdateParentsValid(GetPairParents());
 
   bool result {true};
@@ -295,47 +304,54 @@ Verifier::CheckTreeEdgeInGraph() {
 
 bool 
 Verifier::Verify() {
+  mpi_log_barrier();
+  logger.log("Run %s()\n", __func__);
   bool result {true};
 
+  auto sync_result = [&] {
+    MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);
+    return result;
+  };
+
   do {
-    if (!CheckRange()) {
-      result = false;
+    result = CheckRange();
+    if (!sync_result()) {
       break;
     }
-    logger.debug("CheckRange PASS\n");
+    logger.mpi_debug("CheckRange PASS\n");
 
-    if (!CheckParentOfRoot()) {
-      result = false;
+    result = CheckParentOfRoot();
+    if (!sync_result()) {
       break;
     }
-    logger.debug("CheckParentOfRoot PASS\n");
+    logger.mpi_debug("CheckParentOfRoot PASS\n");
 
-    if (!CheckParentOfOthers()) {
-      result = false;
+    result = CheckParentOfOthers();
+    if (!sync_result()) {
       break;
     }
-    logger.debug("CheckParentOfOthers PASS\n");
+    logger.mpi_debug("CheckParentOfOthers PASS\n");
 
-    if (!ComputeLevels()) {
-      result = false;
+    result = ComputeLevels();
+    if (!sync_result()) {
       break;
     }
-    logger.debug("ComputeLevels PASS\n");
+    logger.mpi_debug("ComputeLevels PASS\n");
 
-    if (!CheckEdgeDistance()) {
-      result = false;
+    result = CheckEdgeDistance();
+    if (!sync_result()) {
       break;
     }
-    logger.debug("CheckEdgeDistance PASS\n");
+    logger.mpi_debug("CheckEdgeDistance PASS\n");
 
-    if (!CheckTreeEdgeInGraph()) {
-      result = false;
+    result = CheckEdgeDistance();
+    if (!sync_result()) {
+      break;
     }
-    logger.debug("CheckTreeEdgeInGraph PASS\n");
+    logger.mpi_debug("CheckEdgeDistance PASS\n");
 
   } while (false);
 
-  MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);
   return result;
 }
 

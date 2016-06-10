@@ -22,7 +22,7 @@ class Logger {
     enum Level {
       kDebug     = 0,
       kLog       = 1,
-      kError     = 4,
+      kError     = 2,
       };
 
     static constexpr int kMaxLevel = 3;

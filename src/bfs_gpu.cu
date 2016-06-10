@@ -342,14 +342,10 @@ struct CudaGraphMemory {
 
 void InitHostInfo(HostInfo &host_info) {
   // buffer size of all gather
-  /*
-  host_info.mpi_local_v_num = host_info.local_v_num;
-  MPI_Allreduce(MPI_IN_PLACE, &host_info.local_v_num, 1, MPI_LONG_LONG,
-      MPI_MAX, MPI_COMM_WORLD);
-  host_info.mpi_global_v_num = host_info.mpi_local_v_num * host_info.mpi_size;
-  */
   host_info.average = host_info.global_v_num / host_info.mpi_size;
   host_info.change = 0;
+
+  memset(host_info.bfs_tree, -1, sizeof(int64_t) * host_info.local_v_num);
 }
 
 void InitCudaDevice(CudaInfo &cuda_info) {
@@ -361,14 +357,14 @@ void InitCudaDevice(CudaInfo &cuda_info) {
 void HostAllocMemory(HostInfo &host_info) {
   host_info.local_bitmap = new bit_type[host_info.local_v_num];
   host_info.global_bitmap = new bit_type[host_info.global_v_num];
+
   memset(host_info.local_bitmap, 0, sizeof(bit_type) * host_info.local_v_num);
   memset(host_info.global_bitmap, 0, sizeof(bit_type) * host_info.global_v_num);
-  memset(host_info.bfs_tree, -1, sizeof(int64_t) * host_info.local_v_num);
 }
 
 void HostFreeMemory(HostInfo &host_info) {
   delete []host_info.local_bitmap;
-  delete []host_info.local_bitmap;
+  delete []host_info.global_bitmap;
 }
 
 void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
@@ -389,18 +385,22 @@ void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
       host_info.global_bitmap, host_info.average, MPI_INT,
       MPI_COMM_WORLD);
 
-
   // the last process send the remainder vertexes to others
   int64_t remainder = host_info.global_v_num % host_info.mpi_size;
   if (0 != remainder) {
 
-    bit_type *send_buff = host_info.local_bitmap + host_info.local_v_num
-      - remainder;
-    bit_type *recv_buff = host_info.global_bitmap + host_info.global_v_num 
-      - remainder;
-    MPI_Scatter(send_buff, remainder, MPI_INT, 
-        recv_buff, remainder, MPI_INT,
-        host_info.mpi_size-1, MPI_COMM_WORLD);
+    if (host_info.mpi_rank == host_info.mpi_size-1) {
+      bit_type *send_buff = host_info.local_bitmap + host_info.local_v_num
+        - remainder;
+      MPI_Bcast(send_buff, remainder, MPI_INT, host_info.mpi_size-1, 
+          MPI_COMM_WORLD);
+
+    } else {
+      bit_type *recv_buff = host_info.global_bitmap + host_info.global_v_num 
+        - remainder;
+      MPI_Bcast(recv_buff, remainder, MPI_INT, host_info.mpi_size-1,
+          MPI_COMM_WORLD);
+    }
   }
 
   cudaMemcpy(d_graph.global_bitmap, host_info.global_bitmap, 
@@ -445,13 +445,19 @@ void SetBFSRoot(HostInfo &host_info, CudaGraphMemory &d_graph) {
   // the last process send the remainder vertexes to others
   int64_t remainder = host_info.global_v_num % host_info.mpi_size;
   if (0 != remainder) {
-    bit_type *send_buff = host_info.local_bitmap + host_info.local_v_num
-      - remainder;
-    bit_type *recv_buff = host_info.global_bitmap + host_info.global_v_num 
-      - remainder;
-    MPI_Scatter(send_buff, remainder, MPI_INT, 
-        recv_buff, remainder, MPI_INT,
-        host_info.mpi_size-1, MPI_COMM_WORLD);
+
+    if (host_info.mpi_rank == host_info.mpi_size-1) {
+      bit_type *send_buff = host_info.local_bitmap + host_info.local_v_num
+        - remainder;
+      MPI_Bcast(send_buff, remainder, MPI_INT, host_info.mpi_size-1, 
+          MPI_COMM_WORLD);
+
+    } else {
+      bit_type *recv_buff = host_info.global_bitmap + host_info.global_v_num 
+        - remainder;
+      MPI_Bcast(recv_buff, remainder, MPI_INT, host_info.mpi_size-1,
+          MPI_COMM_WORLD);
+    }
   }
 
   cudaMemcpy(d_graph.global_bitmap, host_info.global_bitmap, 
@@ -466,7 +472,7 @@ void SetBFSRoot(HostInfo &host_info, CudaGraphMemory &d_graph) {
 void CopyBFSTree(HostInfo &host_info, CudaGraphMemory &d_graph) {
   cudaMemcpy(host_info.bfs_tree, d_graph.bfs_tree,
       sizeof(int64_t) * host_info.local_v_num, cudaMemcpyDeviceToHost);
-  
+
   for (int64_t v = 0; v < host_info.local_v_num; ++v) { 
     debug_print("v[%ld] 's parent %ld\n", v + host_info.local_v_beg,
         host_info.bfs_tree[v]);
@@ -521,6 +527,7 @@ void CudaFreeMemory(CudaGraphMemory &d_graph) {
   cudaFree(d_graph.bfs_tree);
   cudaFree(d_graph.local_bitmap);
   cudaFree(d_graph.global_bitmap);
+  cudaFree(d_graph.p_change);
 }
 
 __device__ int64_t local_to_global(int64_t local) {

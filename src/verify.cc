@@ -184,15 +184,18 @@ Verifier::CheckEdgeDistance() {
   // logger.mpi_debug("end of win fence\n");
 
   // calc
-  for (auto &level_p : edges_levels) {
+  for (size_t e = 0; e < edges_levels.size(); ++e) {
+    auto &level_p = edges_levels[e];
     if ((kMaxLevel == level_p.first && kMaxLevel != level_p.second) ||
         (kMaxLevel != level_p.first && kMaxLevel == level_p.second)) {
-      logger.mpi_error("the levels of edges are not correct: u_l[%d],v_l[%d]\n",
+      logger.mpi_error("the levels of edges are not correct: u[%ld]<->v[%ld]; u_l[%d],v_l[%d]\n",
+          raw_edge_u(e), raw_edge_v(e),
           level_p.first, level_p.second);
       result = false;
     }
     if (abs(level_p.first - level_p.second) > 1) {
-      logger.mpi_error("the levels of edges are not correct: u_l[%d],v_l[%d]\n",
+      logger.mpi_error("the levels of edges are not correct: u[%ld]<->v[%ld]; u_l[%d],v_l[%d]\n",
+          raw_edge_u(e), raw_edge_v(e),
           level_p.first, level_p.second);
       result = false;
     }

@@ -130,6 +130,7 @@ main(int argc, char *argv[]) {
   logger.set_mpi_rank(settings.mpi_rank);
  #ifdef DEBUG
   logger.set_filter_level(Logger::kDebug);
+  logger.set_filter_level(Logger::kLog);
   logger.debug("graph500 run in debug mode.\n");
 #endif
 
@@ -151,6 +152,7 @@ main(int argc, char *argv[]) {
   vector<int64_t> roots = SampleKeys(local_csr);
   for (auto root : roots) {
     // Run BFS here
+    root = 0;
     int64_t *bfs_tree = BuildBFSTree(local_csr, root);
 
     if (VerifyBFSTree(bfs_tree, local_csr.global_v_num(), root, local_raw)) {

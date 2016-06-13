@@ -98,6 +98,22 @@ __global__ void bfs_bottom_up_first(
 
 #include "bfs_gpu.h"
 
+#include <sys/time.h>
+#include <stdlib.h>
+
+#include <cuda_runtime.h>
+
+inline double wtime()
+{
+	double time[2];
+	struct timeval time1;
+	gettimeofday(&time1, NULL);
+
+	time[0]=time1.tv_sec;
+	time[1]=time1.tv_usec;
+
+	return time[0]+time[1]*1.0e-6;
+}
 
 // global device variables
 
@@ -358,6 +374,7 @@ static __global__ void BFSBottomUp(
           bfs_tree[local_v] = global_u;
 
           *p_change = true;
+          break;
         }
       }
     }
@@ -421,6 +438,7 @@ void CudaBFS(int64_t root,
   }
 
 
+  double time = wtime();
   do {
 
     if (false) {
@@ -439,6 +457,9 @@ void CudaBFS(int64_t root,
     SyncWithMPI(host_info, d_graph);
 
   } while (host_info.change);
+
+  double bfs_bw_time = wtime() - time;
+  logger.log("bfs time %lf\n", bfs_bw_time*1000);
 
   CopyBFSTree(host_info, d_graph);
 

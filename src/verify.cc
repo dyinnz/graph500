@@ -51,9 +51,7 @@ Verifier::CheckParentOfRoot() {
 bool
 Verifier::CheckParentOfOthers() {
   logger.mpi_debug("%s()\n", __func__);
-  int64_t average = _global_v_num / settings.mpi_size;
   for (int64_t v = 0; v < _local_v_num; ++v) {
-    int64_t global_u = _parents[v];
     int64_t global_v = v + _local_v_beg;
     if (global_v != _root) {
       if (_parents[v] == global_v) {
@@ -161,7 +159,7 @@ Verifier::CheckEdgeDistance() {
 
   bool result {true};
 
-  assert(_levels.size() == _local_v_num);
+  assert(_levels.size() == (size_t)_local_v_num);
 
   vector<pair<int, int>> edges_levels(_local_raw.edge_num,
                                            {kMaxLevel, kMaxLevel});

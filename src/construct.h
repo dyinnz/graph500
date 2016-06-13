@@ -36,16 +36,9 @@ class LocalCSRGraph {
     int64_t edge_v(int64_t e) { return _edges[e].v; }
 
     void GetVertexNumber();
-    void CountScatteredAdjacentSize(int64_t *adja_size);
-    std::tuple<AdjacentPair *, int64_t *>
-      BuildScatteredCSR(const int64_t *adja_size);
-    void MergeAdjacentSize(int64_t *adja_size);
-    void ComputeOffset(const int64_t *adja_size);
     void ComputeOffset();
-    void GatherEdges(const int64_t *adja_size,
-                     AdjacentPair *scatter_adja,
-                     int64_t *scatter_csr);
-
+    std::tuple<std::vector<std::vector<Edge>>, std::vector<int64_t>>
+      DivideEdgeByOwner();
     void SwapEdges();
     void ConstructAdjacentArrays();
 

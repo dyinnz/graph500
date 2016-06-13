@@ -145,12 +145,15 @@ ShuffleVertexes(int64_t mpi_rank,
   */
 }
 
+/**
+ * There may be a lot of MPI communication, bacause of swap discrete data with
+ * remote mpi processes.
+ */
 static void
 ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
   int64_t average = edge_desired_num / settings.mpi_size;
   int64_t e_beg { -1 }, e_end { -1 };
   tie(e_beg, e_end) = mpi_local_range(edge_desired_num);
-  double u_buf {0}, v_buf {0};
 
   std::mt19937_64 gen;
   for (int64_t e = 0; e < edge_desired_num; ++e) {
@@ -168,24 +171,16 @@ ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
       std::swap(V[e - e_beg], V[i - e_beg]);
 
     } else if (mpi_rank == e_own) {
-      MPI_Send(&U[e-e_beg], 1, MPI_DOUBLE, i_own, 0, MPI_COMM_WORLD);
-      MPI_Send(&V[e-e_beg], 1, MPI_DOUBLE, i_own, 0, MPI_COMM_WORLD);
-      MPI_Recv(&u_buf, 1, MPI_DOUBLE, i_own, 0,
+      MPI_Sendrecv_replace(&U[e-e_beg], 1, MPI_DOUBLE, i_own, 0, i_own, 0,
           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      MPI_Recv(&v_buf, 1, MPI_DOUBLE, i_own, 0,
+      MPI_Sendrecv_replace(&V[e-e_beg], 1, MPI_DOUBLE, i_own, 0, i_own, 0,
           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      U[e - e_beg] = u_buf;
-      V[e - e_beg] = v_buf;
 
     } else if (mpi_rank == i_own) {
-      MPI_Recv(&u_buf, 1, MPI_DOUBLE, e_own, 0,
+      MPI_Sendrecv_replace(&U[i-e_beg], 1, MPI_DOUBLE, e_own, 0, e_own, 0,
           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      MPI_Recv(&v_buf, 1, MPI_DOUBLE, e_own, 0,
+      MPI_Sendrecv_replace(&V[i-e_beg], 1, MPI_DOUBLE, e_own, 0, e_own, 0,
           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      MPI_Send(&U[i-e_beg], 1, MPI_DOUBLE, e_own, 0, MPI_COMM_WORLD);
-      MPI_Send(&V[i-e_beg], 1, MPI_DOUBLE, e_own, 0, MPI_COMM_WORLD);
-      U[i - e_beg] = u_buf;
-      V[i - e_beg] = v_buf;
     }
   }
 }

@@ -16,6 +16,8 @@
 using std::vector;
 using std::pair;
 
+constexpr int64_t kWinLimit = 8192;
+
 const int Verifier::kMaxLevel = INT_MAX;
 
 bool
@@ -24,7 +26,7 @@ Verifier::CheckRange() {
   for (int64_t v = 0; v < _local_v_num; ++v) {
     int64_t u = _parents[v];
     if (! (-1 == u || (0 <= u && u < _global_v_num)) ) {
-      logger.mpi_error("%s(): verify %ld 's parent '%ld FAILED!\n", 
+      logger.mpi_error("%s(): verify %ld 's parent '%ld FAILED!\n",
           __func__, v, u);
       return false;
     }
@@ -46,7 +48,7 @@ Verifier::CheckParentOfRoot() {
   return true;
 }
 
-bool 
+bool
 Verifier::CheckParentOfOthers() {
   logger.mpi_debug("%s()\n", __func__);
   int64_t average = _global_v_num / settings.mpi_size;
@@ -83,7 +85,7 @@ Verifier::ComputeLevels() {
 
   _win = new MPI_Win;
   memset(_win, 0, sizeof(MPI_Win));
-  MPI_Win_create(_levels.data(), _local_v_num * sizeof(int), sizeof(int), 
+  MPI_Win_create(_levels.data(), _local_v_num * sizeof(int), sizeof(int),
       MPI_INFO_NULL, MPI_COMM_WORLD, _win);
 
   bool is_done {false};
@@ -94,21 +96,28 @@ Verifier::ComputeLevels() {
 
     MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
     // skip unconnected vertex
-    for (int64_t v = 0; v < _local_v_num; ++v) if (!visited[v]) {
-      int64_t global_v = _local_v_beg + v;
-      int64_t global_u = _parents[v];
-      if (-1 == global_u || _root == global_v) continue;
-      int64_t u_owner = mpi_get_owner(global_u, average);
+    for (int64_t v = 0; v < _local_v_num; ++v) {
+      if (!visited[v]) {
+        int64_t global_v = _local_v_beg + v;
+        int64_t global_u = _parents[v];
+        if (-1 == global_u || _root == global_v) continue;
+        int64_t u_owner = mpi_get_owner(global_u, average);
 
-      if (u_owner == settings.mpi_rank) {
-        // get parent level from local
-        parent_levels[v] = _levels[global_u - _local_v_beg];
+        if (u_owner == settings.mpi_rank) {
+          // get parent level from local
+          parent_levels[v] = _levels[global_u - _local_v_beg];
 
-      } else {
-        // get parent level from remote
-        int64_t remote_local_u = global_u - u_owner * average;
-        MPI_Get(parent_levels.data() + v, 1, MPI_INT, u_owner, 
-            remote_local_u, 1, MPI_INT, *_win);
+        } else {
+          // get parent level from remote
+          int64_t remote_local_u = global_u - u_owner * average;
+          MPI_Get(parent_levels.data() + v, 1, MPI_INT, u_owner,
+              remote_local_u, 1, MPI_INT, *_win);
+        }
+      }
+
+      if (0 == v % kWinLimit) {
+        MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
+        MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
       }
     }
     MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
@@ -127,7 +136,7 @@ Verifier::ComputeLevels() {
           visited[v] = true;
           is_done = false;
 
-          //logger.mpi_debug("update level of v[%ld] : level[%d]\n", 
+          //logger.mpi_debug("update level of v[%ld] : level[%d]\n",
               //v + _local_v_beg, _levels[v]);
         }
       }
@@ -154,7 +163,7 @@ Verifier::CheckEdgeDistance() {
 
   assert(_levels.size() == _local_v_num);
 
-  vector<pair<int, int>> edges_levels(_local_raw.edge_num, 
+  vector<pair<int, int>> edges_levels(_local_raw.edge_num,
                                            {kMaxLevel, kMaxLevel});
   int64_t average = _global_v_num / settings.mpi_size;
 
@@ -166,35 +175,38 @@ Verifier::CheckEdgeDistance() {
 
     } else {
       int64_t remote_local_v = global_v - owner * average;
-      MPI_Get(&out_level, 1, MPI_INT, owner, 
+      MPI_Get(&out_level, 1, MPI_INT, owner,
           remote_local_v, 1, MPI_INT, *_win);
     }
   };
-
-  // logger.mpi_debug("begin of win fence\n");
 
   // collect all levels needing
   MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
     fetch_level(raw_edge_u(e), edges_levels[e].first);
     fetch_level(raw_edge_v(e), edges_levels[e].second);
+
+    if (0 == e % kWinLimit) {
+      MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
+      MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
+    }
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
-
-  // logger.mpi_debug("end of win fence\n");
 
   // calc
   for (size_t e = 0; e < edges_levels.size(); ++e) {
     auto &level_p = edges_levels[e];
     if ((kMaxLevel == level_p.first && kMaxLevel != level_p.second) ||
         (kMaxLevel != level_p.first && kMaxLevel == level_p.second)) {
-      logger.mpi_error("the levels of edges are not correct: u[%ld]<->v[%ld]; u_l[%d],v_l[%d]\n",
+      logger.mpi_error("the levels of edges are not correct: "
+          "u[%ld]<->v[%ld]; u_l[%d],v_l[%d]\n",
           raw_edge_u(e), raw_edge_v(e),
           level_p.first, level_p.second);
       result = false;
     }
     if (abs(level_p.first - level_p.second) > 1) {
-      logger.mpi_error("the levels of edges are not correct: u[%ld]<->v[%ld]; u_l[%d],v_l[%d]\n",
+      logger.mpi_error("the levels of edges are not correct: "
+          "u[%ld]<->v[%ld]; u_l[%d],v_l[%d]\n",
           raw_edge_u(e), raw_edge_v(e),
           level_p.first, level_p.second);
       result = false;
@@ -207,6 +219,8 @@ Verifier::CheckEdgeDistance() {
 
 vector<pair<int64_t, int64_t>>
 Verifier::GetPairParents() {
+  logger.mpi_debug("%s():\n", __func__);
+
   vector<pair<int64_t, int64_t>> pair_parents(_local_raw.edge_num,
       {-1, -1});
 
@@ -232,29 +246,38 @@ Verifier::GetPairParents() {
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
     fetch_parent(raw_edge_u(e), pair_parents[e].first);
     fetch_parent(raw_edge_v(e), pair_parents[e].second);
+
+    if (0 == e % kWinLimit) {
+      MPI_Win_fence(MPI_MODE_NOSUCCEED, parents_win);
+      MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, parents_win);
+    }
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, parents_win);
   MPI_Win_free(&parents_win);
 
+  /*
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
-    //logger.mpi_debug("edge u: %ld<-%ld, v: %ld<-%ld\n", 
-        //raw_edge_u(e), pair_parents[e].first,
-        //raw_edge_v(e), pair_parents[e].second);
+    logger.mpi_debug("edge u: %ld<-%ld, v: %ld<-%ld\n",
+        raw_edge_u(e), pair_parents[e].first,
+        raw_edge_v(e), pair_parents[e].second);
   }
+  */
 
   return pair_parents;
 }
 
-vector<int8_t> 
+vector<int8_t>
 Verifier::UpdateParentsValid(
     const vector<pair<int64_t, int64_t>> &pair_parents) {
+  logger.mpi_debug("%s():\n", __func__);
+
   vector<int8_t> parents_valid(_local_v_num, false);
   int64_t average = _global_v_num / settings.mpi_size;
   int8_t kTrue {true};
 
   // update valid
   MPI_Win valid_win;
-  MPI_Win_create(parents_valid.data(), _local_v_num * sizeof(int8_t), 
+  MPI_Win_create(parents_valid.data(), _local_v_num * sizeof(int8_t),
       sizeof(int8_t), MPI_INFO_NULL, MPI_COMM_WORLD, &valid_win);
 
   auto update_valid = [&](int64_t global_v) {
@@ -271,25 +294,33 @@ Verifier::UpdateParentsValid(
 
   MPI_Win_fence(MPI_MODE_NOPRECEDE, valid_win);
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+
     int64_t global_u = raw_edge_u(e);
     int64_t global_v = raw_edge_v(e);
     if (global_v == pair_parents[e].first) {
       // logger.mpi_debug("update edges %ld<-%ld\n", global_u, global_v);
       update_valid(global_u);
-    } 
+    }
     if (global_u == pair_parents[e].second) {
       // logger.mpi_debug("update edges %ld<-%ld\n", global_v, global_u);
       update_valid(global_v);
     }
+
+    if (0 == e % kWinLimit) {
+      MPI_Win_fence(MPI_MODE_NOSUCCEED, valid_win);
+      MPI_Win_fence(MPI_MODE_NOPRECEDE, valid_win);
+    }
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, valid_win);
   MPI_Win_free(&valid_win);
+
   return parents_valid;
 }
 
 bool
 Verifier::CheckTreeEdgeInGraph() {
   logger.mpi_debug("%s()\n", __func__);
+
   vector<int8_t> parents_valid = UpdateParentsValid(GetPairParents());
 
   bool result {true};
@@ -304,7 +335,7 @@ Verifier::CheckTreeEdgeInGraph() {
   return result;
 }
 
-bool 
+bool
 Verifier::Verify() {
   mpi_log_barrier();
   logger.log("Run %s()\n", __func__);
@@ -346,14 +377,20 @@ Verifier::Verify() {
     }
     logger.mpi_debug("CheckEdgeDistance PASS\n");
 
+    result = CheckTreeEdgeInGraph();
+    if (!sync_result()) {
+      break;
+    }
+    logger.mpi_debug("CheckTreeEdgeInGraph PASS\n");
+
   } while (false);
 
   return result;
 }
 
-bool 
-VerifyBFSTree(int64_t *parents, 
-    int64_t global_v_num, 
+bool
+VerifyBFSTree(int64_t *parents,
+    int64_t global_v_num,
     int64_t root,
     LocalRawGraph &local_raw) {
   Verifier verifier(parents, global_v_num, root, local_raw);

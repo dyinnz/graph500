@@ -16,6 +16,8 @@
 using std::vector;
 using std::pair;
 
+constexpr int64_t kWinLimit = 8192;
+
 const int Verifier::kMaxLevel = INT_MAX;
 
 bool
@@ -94,21 +96,28 @@ Verifier::ComputeLevels() {
 
     MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
     // skip unconnected vertex
-    for (int64_t v = 0; v < _local_v_num; ++v) if (!visited[v]) {
-      int64_t global_v = _local_v_beg + v;
-      int64_t global_u = _parents[v];
-      if (-1 == global_u || _root == global_v) continue;
-      int64_t u_owner = mpi_get_owner(global_u, average);
+    for (int64_t v = 0; v < _local_v_num; ++v) {
+      if (!visited[v]) {
+        int64_t global_v = _local_v_beg + v;
+        int64_t global_u = _parents[v];
+        if (-1 == global_u || _root == global_v) continue;
+        int64_t u_owner = mpi_get_owner(global_u, average);
 
-      if (u_owner == settings.mpi_rank) {
-        // get parent level from local
-        parent_levels[v] = _levels[global_u - _local_v_beg];
+        if (u_owner == settings.mpi_rank) {
+          // get parent level from local
+          parent_levels[v] = _levels[global_u - _local_v_beg];
 
-      } else {
-        // get parent level from remote
-        int64_t remote_local_u = global_u - u_owner * average;
-        MPI_Get(parent_levels.data() + v, 1, MPI_INT, u_owner,
-            remote_local_u, 1, MPI_INT, *_win);
+        } else {
+          // get parent level from remote
+          int64_t remote_local_u = global_u - u_owner * average;
+          MPI_Get(parent_levels.data() + v, 1, MPI_INT, u_owner,
+              remote_local_u, 1, MPI_INT, *_win);
+        }
+      }
+
+      if (0 == v % kWinLimit) {
+        MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
+        MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
       }
     }
     MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
@@ -171,17 +180,18 @@ Verifier::CheckEdgeDistance() {
     }
   };
 
-  logger.mpi_debug("%s(): begin of win fence\n", __func__);
-
   // collect all levels needing
   MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
     fetch_level(raw_edge_u(e), edges_levels[e].first);
     fetch_level(raw_edge_v(e), edges_levels[e].second);
+
+    if (0 == e % kWinLimit) {
+      MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
+      MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
+    }
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
-
-  logger.mpi_debug("%s(): end of win fence\n", __func__);
 
   // calc
   for (size_t e = 0; e < edges_levels.size(); ++e) {
@@ -232,17 +242,18 @@ Verifier::GetPairParents() {
     }
   };
 
-  logger.mpi_debug("%s(): begin of win fence\n", __func__);
-
   MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, parents_win);
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
     fetch_parent(raw_edge_u(e), pair_parents[e].first);
     fetch_parent(raw_edge_v(e), pair_parents[e].second);
+
+    if (0 == e % kWinLimit) {
+      MPI_Win_fence(MPI_MODE_NOSUCCEED, parents_win);
+      MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, parents_win);
+    }
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, parents_win);
   MPI_Win_free(&parents_win);
-
-  logger.mpi_debug("%s(): end of win fence\n", __func__);
 
   /*
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
@@ -281,10 +292,9 @@ Verifier::UpdateParentsValid(
     }
   };
 
-  logger.mpi_debug("%s(): begin of win fence\n", __func__);
-
   MPI_Win_fence(MPI_MODE_NOPRECEDE, valid_win);
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
+
     int64_t global_u = raw_edge_u(e);
     int64_t global_v = raw_edge_v(e);
     if (global_v == pair_parents[e].first) {
@@ -295,11 +305,14 @@ Verifier::UpdateParentsValid(
       // logger.mpi_debug("update edges %ld<-%ld\n", global_v, global_u);
       update_valid(global_v);
     }
+
+    if (0 == e % kWinLimit) {
+      MPI_Win_fence(MPI_MODE_NOSUCCEED, valid_win);
+      MPI_Win_fence(MPI_MODE_NOPRECEDE, valid_win);
+    }
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, valid_win);
   MPI_Win_free(&valid_win);
-
-  logger.mpi_debug("%s(): end of win fence\n", __func__);
 
   return parents_valid;
 }

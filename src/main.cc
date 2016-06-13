@@ -17,6 +17,7 @@
 
 using namespace dy_logger;
 using std::vector;
+using std::string;
 
 Logger logger;
 Settings settings;
@@ -26,7 +27,13 @@ int64_t* BuildBFSTree(LocalCSRGraph &local_csr, int64_t root);
 bool VerifyBFSTree(int64_t *parents, int64_t global_v_num, int64_t root, 
     LocalRawGraph &local_raw);
 
+
+void DumpLocalRawGraph(const string &filename, LocalRawGraph &local_raw);
+LocalRawGraph LoadLocalRawGraph(const string &filename);
+
+
 /*----------------------------------------------------------------------------*/
+
 
 /**
  * @brief   parse input parameter, print them.
@@ -34,13 +41,31 @@ bool VerifyBFSTree(int64_t *parents, int64_t global_v_num, int64_t root,
 static void
 ParseParameters(int argc, char * const *argv) {
   int opt {0};
-  while (-1 != (opt = getopt(argc, argv, "s:e:"))) {
+  while (-1 != (opt = getopt(argc, argv, "s:e:dfi:o:"))) {
     switch (opt) {
       case 's':
         settings.scale = atoi(optarg); break;
 
       case 'e':
         settings.edge_factor = atoi(optarg); break;
+
+      case 'd':
+        settings.is_debug = true; break;
+
+      case 'f':
+        settings.is_verify = false; break;
+
+      case 'i':
+        settings.file_in = optarg; break;
+
+      case 'o':
+        if (!settings.file_in.empty()) {
+          logger.mpi_error(
+              "input date filename have be set! invalide parameters\n");
+        } else {
+          settings.file_out = optarg;
+        }
+        break;
 
       default:
         logger.log("unrecognized parameters.");
@@ -50,7 +75,12 @@ ParseParameters(int argc, char * const *argv) {
 
   logger.log("Scale       : %d\n", settings.scale);
   logger.log("Edge factor : %d\n", settings.edge_factor);
+  logger.log("Debug mode  : %d\n", settings.is_debug);
+  logger.log("Validation  : %d\n", settings.is_verify);
+  logger.log("Input file  : %s\n", settings.file_in.c_str());
+  logger.log("Output file : %s\n", settings.file_out.c_str());
 }
+
 
 /**
  * @brief   initialize other settings and some resources
@@ -63,6 +93,7 @@ Initialize() {
   logger.log("Total vertexes      : %d\n", settings.vertex_num);
   logger.log("Total desired edges : %d\n", settings.edge_desired_num);
 }
+
 
 static bool
 CheckConnection(LocalCSRGraph &local_csr, int64_t index) {
@@ -77,6 +108,7 @@ CheckConnection(LocalCSRGraph &local_csr, int64_t index) {
       MPI_COMM_WORLD);
   return is_connect;
 }
+
 
 static vector<int64_t>
 SampleKeys(LocalCSRGraph &local_csr) {
@@ -117,6 +149,7 @@ SampleKeys(LocalCSRGraph &local_csr) {
   return roots;
 }
 
+
 int
 main(int argc, char *argv[]) {
 
@@ -127,14 +160,15 @@ main(int argc, char *argv[]) {
   fprintf(stderr, "--- MPI world: rank %d, size %d ---\n",
       settings.mpi_rank, settings.mpi_size);
 
-  logger.set_mpi_rank(settings.mpi_rank);
- #ifdef DEBUG
-  logger.set_filter_level(Logger::kDebug);
-  logger.set_filter_level(Logger::kLog);
-  logger.debug("graph500 run in debug mode.\n");
-#endif
-
   ParseParameters(argc, argv);
+
+  logger.set_mpi_rank(settings.mpi_rank);
+  if (settings.is_debug) {
+    logger.set_filter_level(Logger::kDebug);
+  } else {
+    logger.set_filter_level(Logger::kLog);
+  }
+
   Initialize();
 
 #if 0
@@ -144,8 +178,21 @@ main(int argc, char *argv[]) {
   return 0;
 #endif
 
-  LocalRawGraph local_raw = MPIGenerateGraph(settings.vertex_num,
-                                             settings.edge_desired_num);
+  LocalRawGraph local_raw {nullptr, 0, 0};
+
+  if (!settings.file_in.empty()) {
+    local_raw = LoadLocalRawGraph(settings.file_in);
+
+  } else {
+    local_raw = MPIGenerateGraph(
+        settings.vertex_num, settings.edge_desired_num);
+
+    if (!settings.file_out.empty()) {
+      DumpLocalRawGraph(settings.file_out, local_raw);
+      logger.mpi_log("graph exit because of completing dumping\n");
+      return 0;
+    }
+  }
 
   LocalCSRGraph local_csr(local_raw);
   local_csr.Construct();
@@ -155,11 +202,17 @@ main(int argc, char *argv[]) {
     root = 0;
     int64_t *bfs_tree = BuildBFSTree(local_csr, root);
 
-    if (VerifyBFSTree(bfs_tree, local_csr.global_v_num(), root, local_raw)) {
-      logger.log("verify bfs rooted %ld pass\n", root);
+    if (settings.is_verify) {
+      if (VerifyBFSTree(bfs_tree, local_csr.global_v_num(), root, local_raw)) {
+        logger.log("verify bfs rooted %ld pass\n", root);
+      } else {
+        logger.error("verify bfs rooted %ld failed\n", root);
+      }     
+
     } else {
-      logger.error("verify bfs rooted %ld failed\n", root);
+      logger.log("skip validation\n");
     }
+
     delete []bfs_tree;
 
   #ifdef DEBUG

@@ -9,6 +9,7 @@
 
 #include <functional>
 #include <tuple>
+#include <string>
 
 #include "mpi.h"
 
@@ -22,6 +23,10 @@ struct Settings {
   int sample_num {64};
   int64_t vertex_num {0};
   int64_t edge_desired_num {0};
+  bool is_debug {false};
+  bool is_verify {true};
+  std::string file_in;
+  std::string file_out;
 };
 
 struct Edge {

@@ -39,11 +39,10 @@ void LocalCSRGraph::GetVertexNumber() {
 }
 
 
-tuple<vector<vector<Edge>>, vector<int64_t>>
+tuple<vector<vector<Edge>>, vector<int>>
 LocalCSRGraph::DivideEdgeByOwner() {
 
-  uint64_t mpi_rank = settings.mpi_rank;
-  uint64_t mpi_size = settings.mpi_size;
+  int mpi_size = settings.mpi_size;
 
   // divide raw edges by their own
   vector<vector<Edge>> edges_lists(mpi_size);
@@ -67,67 +66,56 @@ LocalCSRGraph::DivideEdgeByOwner() {
   }
 
   // get the number of edges
-  vector<int64_t> edges_numbers(mpi_size);
-  for (size_t r = 0; r < edges_numbers.size(); ++r) {
-    edges_numbers[r] = edges_lists[r].size();
+  vector<int> scatter_edges_num(mpi_size);
+  for (size_t r = 0; r < scatter_edges_num.size(); ++r) {
+    scatter_edges_num[r] = edges_lists[r].size();
   }
-  MPI_Allreduce(MPI_IN_PLACE, edges_numbers.data(), mpi_size,
-      MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
 
-  logger.mpi_log("desevered edges number: %ld\n", edges_numbers[mpi_rank]);
-
-  return make_tuple(edges_lists, edges_numbers);
+  return make_tuple(edges_lists, scatter_edges_num);
 }
 
 
 void LocalCSRGraph::SwapEdges() {
 
-  uint64_t mpi_rank = settings.mpi_rank;
-  uint64_t mpi_size = settings.mpi_size;
+  int mpi_size = settings.mpi_size;
 
   vector<vector<Edge>> edges_lists;
-  vector<int64_t> edges_numbers;
-  tie(edges_lists, edges_numbers) = DivideEdgeByOwner();
+  vector<int> scatter_edges_num;
+  tie(edges_lists, scatter_edges_num) = DivideEdgeByOwner();
 
-  // resize the vector for store edges
-  _edges.resize(edges_numbers[mpi_rank]);
+  int64_t local_edge_num {0};
+  vector<int> gather_count(mpi_size);
+  vector<int> gather_offset(mpi_size);
 
-  // swap edges one by one
-  for (size_t base = 0; base < mpi_size; ++base) {
+  for (int base = 0; base < mpi_size; ++base) {
 
-    if (base == mpi_rank) {
-      Edge *offset = _edges.data();
-      // copy from local raw edges
-      memcpy(offset, edges_lists[base].data(),
-          edges_lists[base].size() * sizeof(Edge));
-      offset += edges_lists[base].size();
-      // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
+    // gather count
+    MPI_Gather(&scatter_edges_num[base], 1, MPI_INT, 
+        gather_count.data(), 1, MPI_INT, 
+        base, MPI_COMM_WORLD);
 
-      // base recv from other mpi processes
-      for (size_t i = 0; i < mpi_size; ++i) if (i != mpi_rank) {
-        MPI_Status status;
-        memset(&status, 0, sizeof(MPI_Status));
-        MPI_Probe(i, 0, MPI_COMM_WORLD, &status);
-
-        // TODO: Warning, may overflow
-        int recv_count {0};
-        MPI_Get_count(&status, MPI_LONG_LONG, &recv_count);
-
-        MPI_Recv(offset, recv_count, MPI_LONG_LONG, i, 0,
-            MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        offset += recv_count / 2;
-        // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
-      }
-
-      if (offset - _edges.data() != (ssize_t)_edges.size()) {
-        logger.error("the edges size if not corrected! get %ld, wish %zu\n",
-            offset - _edges.data(), _edges.size());
-      }
-    } else {
-      // send to base
-      MPI_Send(edges_lists[base].data(), edges_lists[base].size() * 2,
-          MPI_LONG_LONG, base, 0, MPI_COMM_WORLD);
+    for (auto &num : gather_count) {
+      local_edge_num += num;
+      num *= 2;
     }
+
+    // calc offset of recv buff
+    gather_offset[0] = 0;
+    for (size_t i = 1; i < gather_offset.size(); ++i) {
+      gather_offset[i] = gather_offset[i-1] + gather_count[i-1];
+    }
+
+    // reserve memory
+    if (base == settings.mpi_rank) {
+      _edges.resize(local_edge_num);
+      logger.mpi_log("desevered edges number: %ld\n", local_edge_num);
+    }
+
+    // gather edges
+    MPI_Gatherv(
+        edges_lists[base].data(), edges_lists[base].size() * 2, MPI_LONG_LONG,
+        _edges.data(), gather_count.data(), gather_offset.data(), MPI_LONG_LONG,
+        base, MPI_COMM_WORLD);
   }
 
   /*

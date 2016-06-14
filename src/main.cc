@@ -24,7 +24,7 @@ Settings settings;
 
 LocalRawGraph MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num);
 int64_t* BuildBFSTree(LocalCSRGraph &local_csr, int64_t root);
-bool VerifyBFSTree(int64_t *parents, int64_t global_v_num, int64_t root, 
+bool VerifyBFSTree(int64_t *parents, int64_t global_v_num, int64_t root,
     LocalRawGraph &local_raw);
 
 
@@ -122,7 +122,7 @@ SampleKeys(LocalCSRGraph &local_csr) {
   std::random_device rd;
   std::mt19937_64 rand_gen(rd());
   int64_t remain_vertex_num { settings.vertex_num };
-  while (roots.size() < settings.sample_num && remain_vertex_num > 0) {
+  while ((ssize_t)roots.size() < settings.sample_num && remain_vertex_num > 0) {
 
     // generate a random index
     int64_t index = rand_gen() % remain_vertex_num;
@@ -190,6 +190,8 @@ main(int argc, char *argv[]) {
     if (!settings.file_out.empty()) {
       DumpLocalRawGraph(settings.file_out, local_raw);
       logger.mpi_log("graph exit because of completing dumping\n");
+      MPI_Barrier(MPI_COMM_WORLD);
+      MPI_Finalize();
       return 0;
     }
   }
@@ -207,7 +209,7 @@ main(int argc, char *argv[]) {
         logger.log("verify bfs rooted %ld pass\n", root);
       } else {
         logger.error("verify bfs rooted %ld failed\n", root);
-      }     
+      }
 
     } else {
       logger.log("skip validation\n");

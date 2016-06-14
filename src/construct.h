@@ -37,7 +37,7 @@ class LocalCSRGraph {
 
     void GetVertexNumber();
     void ComputeOffset();
-    std::tuple<std::vector<std::vector<Edge>>, std::vector<int64_t>>
+    std::tuple<std::vector<std::vector<Edge>>, std::vector<int>>
       DivideEdgeByOwner();
     void SwapEdges();
     void ConstructAdjacentArrays();

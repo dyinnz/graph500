@@ -78,10 +78,13 @@ LocalCSRGraph::DivideEdgeByOwner() {
 void LocalCSRGraph::SwapEdges() {
 
   int mpi_size = settings.mpi_size;
+  int mpi_rank = settings.mpi_rank;
 
   vector<vector<Edge>> edges_lists;
   vector<int> scatter_edges_num;
   tie(edges_lists, scatter_edges_num) = DivideEdgeByOwner();
+
+#if 0
 
   int64_t local_edge_num {0};
   vector<int> gather_count(mpi_size);
@@ -116,6 +119,51 @@ void LocalCSRGraph::SwapEdges() {
         edges_lists[base].data(), edges_lists[base].size() * 2, MPI_LONG_LONG,
         _edges.data(), gather_count.data(), gather_offset.data(), MPI_LONG_LONG,
         base, MPI_COMM_WORLD);
+  }
+
+#endif
+
+  MPI_Allreduce(MPI_IN_PLACE, scatter_edges_num.data(), mpi_size,
+      MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  logger.mpi_log("desevered edges number: %d\n", scatter_edges_num[mpi_rank]);
+
+  // swap edges one by one
+  _edges.resize(scatter_edges_num[mpi_rank]);
+  for (int base = 0; base < mpi_size; ++base) {
+
+    if (base == mpi_rank) {
+      Edge *offset = _edges.data();
+      // copy from local raw edges
+      memcpy(offset, edges_lists[base].data(),
+          edges_lists[base].size() * sizeof(Edge));
+      offset += edges_lists[base].size();
+      // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
+
+      // base recv from other mpi processes
+      for (int i = 0; i < mpi_size; ++i) if (i != mpi_rank) {
+        MPI_Status status;
+        memset(&status, 0, sizeof(MPI_Status));
+        MPI_Probe(i, 0, MPI_COMM_WORLD, &status);
+
+        // TODO: Warning, may overflow
+        int recv_count {0};
+        MPI_Get_count(&status, MPI_LONG_LONG, &recv_count);
+
+        MPI_Recv(offset, recv_count, MPI_LONG_LONG, i, 0,
+            MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        offset += recv_count / 2;
+        // logger.mpi_debug("current edge size: %ld\n", offset - _edges.data());
+      }
+
+      if (offset - _edges.data() != (ssize_t)_edges.size()) {
+        logger.error("the edges size if not corrected! get %ld, wish %zu\n",
+            offset - _edges.data(), _edges.size());
+      }
+    } else {
+      // send to base
+      MPI_Send(edges_lists[base].data(), edges_lists[base].size() * 2,
+          MPI_LONG_LONG, base, 0, MPI_COMM_WORLD);
+    }
   }
 
   /*

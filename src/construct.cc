@@ -219,16 +219,20 @@ void LocalCSRGraph::Construct() {
   mpi_log_barrier();
   logger.log("begin constructing csr graph...\n");
 
+  TickOnce tick;
+
   GetVertexNumber();
 
+  TickOnce swap_tick;
   SwapEdges();
+  logger.mpi_log("swap tick: %fms\n", swap_tick());
 
   ComputeOffset();
 
   ConstructAdjacentArrays();
 
   MPI_Barrier(MPI_COMM_WORLD);
-  logger.log("finish constructing csr graph.\n");
+  logger.log("finish constructing csr graph. cost time: %fms\n", tick());
 }
 
 

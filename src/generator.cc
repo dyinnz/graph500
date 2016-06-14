@@ -198,6 +198,8 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   mpi_log_barrier();
   logger.log("begin generating edges array of graph...\n");
 
+  TickOnce tick;
+
   LocalRawGraph local_raw;
 
   local_raw.global_edge_num = edge_desired_num;
@@ -210,7 +212,10 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   GenerateEdgeTuples(settings.mpi_rank, settings.scale,
       U, V, local_raw.edge_num);
   ShuffleVertexes(settings.mpi_rank, U, V, local_raw.edge_num, vertex_num);
+
+  TickOnce tick_shuffle;
   ShuffleEdges(settings.mpi_rank, U, V, edge_desired_num);
+  logger.log("shuffle edges cost: %fms\n", tick_shuffle());
 
   local_raw.edges = new Edge[local_raw.edge_num];
   LoadEdges(U, V, local_raw.edges, local_raw.edge_num);
@@ -226,7 +231,7 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   delete []V;
 
   MPI_Barrier(MPI_COMM_WORLD);
-  logger.log("finish generating graph.\n");
+  logger.log("finish generating graph. cost time: %fms\n", tick());
   return local_raw;
 }
 

@@ -141,8 +141,8 @@ static void InitHostInfo(HostInfo &host_info) {
 
 static void InitCudaDevice(CudaInfo &cuda_info) {
   // TODO: change this value
-  cuda_info.blocks_number = 8;
-  cuda_info.threads_per_block = 64;
+  cuda_info.blocks_number = 256;
+  cuda_info.threads_per_block = 256;
 
   cudaSetDevice(settings.mpi_rank % 4);
 }
@@ -460,6 +460,7 @@ void CudaBFS(int64_t root,
 
   double bfs_bw_time = wtime() - time;
   logger.log("bfs time %lf\n", bfs_bw_time*1000);
+  logger.log("TEPS: %le\n", global_v_num * 16.0 / bfs_bw_time * 1000.0);
 
   CopyBFSTree(host_info, d_graph);
 

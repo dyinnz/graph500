@@ -271,7 +271,12 @@ static bool SyncIsChange(HostInfo &host_info, CudaGraphMemory &d_graph) {
       sizeof(bool), cudaMemcpyDeviceToHost);
   MPI_Allreduce(MPI_IN_PLACE, &host_info.change, 1, MPI_BYTE,
       MPI_BOR, MPI_COMM_WORLD);
-  return host_info.change;
+
+  bool ret = host_info.change;
+  host_info.change = false;
+  cudaMemcpy(d_graph.p_change, &host_info.change,
+      sizeof(bool), cudaMemcpyHostToDevice);;
+  return ret;
 }
 
 
@@ -308,10 +313,11 @@ static void CopyBFSTree(HostInfo &host_info, CudaGraphMemory &d_graph) {
   cudaMemcpy(host_info.bfs_tree, d_graph.bfs_tree,
       sizeof(int64_t) * host_info.local_v_num, cudaMemcpyDeviceToHost);
 
+  /*
   for (int64_t v = 0; v < host_info.local_v_num; ++v) {
     logger.mpi_debug("v[%ld] 's parent %ld\n", v + host_info.local_v_beg,
         host_info.bfs_tree[v]);
-  }
+  } */
 }
 
 
@@ -341,7 +347,7 @@ static __global__ void BFSBottomUp(
   const int64_t local_v_num  = gd_local_v_num;
   const int64_t kThreadsNumber = blockDim.x * gridDim.x;
 
-  *p_change = false;
+  // *p_change = false;
 
   for (int64_t local_v = blockIdx.x*blockDim.x + threadIdx.x;
       local_v < local_v_num; local_v += kThreadsNumber) {
@@ -451,7 +457,7 @@ void CudaBFS(int64_t root,
           d_graph.local_bitmap,
           d_graph.global_bitmap,
           d_graph.p_change);
-      logger.mpi_log("topdown TIME : %fms\n", func_tick());
+      logger.mpi_log("bottom up TIME : %fms\n", func_tick());
     }
 
     if (!SyncIsChange(host_info, d_graph)) {

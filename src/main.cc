@@ -149,7 +149,7 @@ SampleKeys(LocalCSRGraph &local_csr) {
         index : swap_map[index];
       roots.push_back(real_index);
 
-      // logger.debug("%ld map to %ld connect!\n", index, real_index);
+      logger.debug("%ld map to %ld connect!\n", index, real_index);
     } else {
       // logger.debug("%ld not connect!\n", index);
     }

@@ -130,8 +130,8 @@ Verifier::ComputeLevels() {
         if (parent_levels[v] != level-1) {
           is_done = true;
           result = false;
-          //logger.mpi_error("the parent of v[%ld] is not correct\n",
-              //v + _local_v_beg);
+          logger.mpi_error("the parent of v[%ld] is not correct\n",
+              v + _local_v_beg);
 
         } else {
           _levels[v] = parent_levels[v] + 1;
@@ -182,16 +182,22 @@ Verifier::CheckEdgeDistance() {
     }
   };
 
+  static int64_t debug_count = 0;
+
   // collect all levels needing
   MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
     fetch_level(raw_edge_u(e), edges_levels[e].first);
     fetch_level(raw_edge_v(e), edges_levels[e].second);
 
-    if (0 == e % kWinLimit) {
+    if (0 == e % kWinLimit && e < _min_node_edge) {
       MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
       MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
     }
+    /*
+    if (0 == ++debug_count % 100000) {
+      logger.mpi_debug("%s() %ld\n", __func__, debug_count);
+    } */
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
 
@@ -249,7 +255,7 @@ Verifier::GetPairParents() {
     fetch_parent(raw_edge_u(e), pair_parents[e].first);
     fetch_parent(raw_edge_v(e), pair_parents[e].second);
 
-    if (0 == e % kWinLimit) {
+    if (0 == e % kWinLimit && e < _min_node_edge) {
       MPI_Win_fence(MPI_MODE_NOSUCCEED, parents_win);
       MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, parents_win);
     }
@@ -308,7 +314,7 @@ Verifier::UpdateParentsValid(
       update_valid(global_v);
     }
 
-    if (0 == e % kWinLimit) {
+    if (0 == e % kWinLimit && e < _min_node_edge) {
       MPI_Win_fence(MPI_MODE_NOSUCCEED, valid_win);
       MPI_Win_fence(MPI_MODE_NOPRECEDE, valid_win);
     }
@@ -342,6 +348,10 @@ Verifier::Verify() {
   mpi_log_barrier();
   logger.log("Run %s()\n", __func__);
   bool result {true};
+
+  _min_node_edge = _local_raw.edge_num;
+  MPI_Allreduce(MPI_IN_PLACE, &_min_node_edge, 1, MPI_LONG_LONG,
+      MPI_MIN, MPI_COMM_WORLD);
 
   auto sync_result = [&] {
     MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);

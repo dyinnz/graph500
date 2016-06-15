@@ -17,6 +17,8 @@ class Verifier {
     int64_t _local_v_beg {0};
     int64_t _local_v_end {0};
 
+    int64_t _min_node_edge {0};
+
     static const int kMaxLevel;
     std::vector<int> _levels;
 

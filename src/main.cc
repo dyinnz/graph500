@@ -175,9 +175,10 @@ main(int argc, char *argv[]) {
   fprintf(stderr, "--- MPI world: rank %d, size %d ---\n",
       settings.mpi_rank, settings.mpi_size);
 
+  logger.set_mpi_rank(settings.mpi_rank);
+  logger.set_filter_level(Logger::kDebug);
   ParseParameters(argc, argv);
 
-  logger.set_mpi_rank(settings.mpi_rank);
   if (settings.is_debug) {
     logger.set_filter_level(Logger::kDebug);
   } else {

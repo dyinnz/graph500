@@ -264,7 +264,7 @@ static void SetBFSRoot(HostInfo &host_info, CudaGraphMemory &d_graph) {
 }
 
 
-static void SyncIsChange(HostInfo &host_info, CudaAllocMemory &d_graph) {
+static bool SyncIsChange(HostInfo &host_info, CudaGraphMemory &d_graph) {
   cudaMemcpy(&host_info.change, d_graph.p_change,
       sizeof(bool), cudaMemcpyDeviceToHost);
   MPI_Allreduce(MPI_IN_PLACE, &host_info.change, 1, MPI_BYTE,

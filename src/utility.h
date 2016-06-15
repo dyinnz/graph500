@@ -10,6 +10,7 @@
 #include <functional>
 #include <tuple>
 #include <string>
+#include <chrono>
 
 #include "mpi.h"
 
@@ -25,6 +26,7 @@ struct Settings {
   int64_t edge_desired_num {0};
   bool is_debug {false};
   bool is_verify {true};
+  bool is_swap_edges {true};
   std::string file_in;
   std::string file_out;
 };
@@ -57,6 +59,22 @@ class ScopeGuarder {
 };
 
 #define ScopeGuard(F) ScopeGuarder __FILE__##__LINE__##ScopeGuarder(F)
+
+
+class TickOnce {
+  public:
+    TickOnce() : _last(std::chrono::system_clock::now()) {}
+
+    float operator() () {
+      auto ret = std::chrono::system_clock::now() - _last;
+      _last = std::chrono::system_clock::now();
+      return ret.count() / 1000000.0;
+    }
+
+  private:
+    std::chrono::system_clock::time_point _last;
+};
+
 
 // inline std::pair<int64_t, int64_t>
 inline std::tuple<int64_t, int64_t>

@@ -40,8 +40,19 @@ LocalRawGraph LoadLocalRawGraph(const string &filename);
  */
 static void
 ParseParameters(int argc, char * const *argv) {
+
+  auto parse_bool = [](char * const p, bool &b) {
+    if ('0' == *p || 'F' == *p || 'f' == *p) {
+      b = false;
+    } else if ('1' == *p || 'T' == *p || 't' == *p) {
+      b = true;
+    } else {
+      logger.mpi_error("Incorrect bool parameter: %s\n", p);
+    }
+  };
+
   int opt {0};
-  while (-1 != (opt = getopt(argc, argv, "s:e:dfi:o:"))) {
+  while (-1 != (opt = getopt(argc, argv, "s:e:d:v:f:i:o:"))) {
     switch (opt) {
       case 's':
         settings.scale = atoi(optarg); break;
@@ -50,10 +61,13 @@ ParseParameters(int argc, char * const *argv) {
         settings.edge_factor = atoi(optarg); break;
 
       case 'd':
-        settings.is_debug = true; break;
+        parse_bool(optarg, settings.is_debug); break;
+
+      case 'v':
+        parse_bool(optarg, settings.is_verify); break;
 
       case 'f':
-        settings.is_verify = false; break;
+        parse_bool(optarg, settings.is_swap_edges); break;
 
       case 'i':
         settings.file_in = optarg; break;
@@ -188,8 +202,9 @@ main(int argc, char *argv[]) {
         settings.vertex_num, settings.edge_desired_num);
 
     if (!settings.file_out.empty()) {
+      TickOnce tick_dump;
       DumpLocalRawGraph(settings.file_out, local_raw);
-      logger.mpi_log("graph exit because of completing dumping\n");
+      logger.mpi_log("graph exit because of completing dumping: TIME %fms\n", tick_dump());
       MPI_Barrier(MPI_COMM_WORLD);
       MPI_Finalize();
       return 0;

@@ -121,7 +121,7 @@ void LocalCSRGraph::SwapEdges() {
         base, MPI_COMM_WORLD);
   }
 
-#endif
+#else
 
   MPI_Allreduce(MPI_IN_PLACE, scatter_edges_num.data(), mpi_size,
       MPI_INT, MPI_SUM, MPI_COMM_WORLD);
@@ -165,6 +165,8 @@ void LocalCSRGraph::SwapEdges() {
           MPI_LONG_LONG, base, 0, MPI_COMM_WORLD);
     }
   }
+
+#endif
 
   /*
   for (auto &edge : _edges) {
@@ -257,18 +259,21 @@ void LocalCSRGraph::Construct() {
 
   TickOnce tick;
 
+  TickOnce tick_sub;
   GetVertexNumber();
+  // logger.mpi_log("GetVertexNumber: TIME %fms\n", tick_sub());
 
-  TickOnce swap_tick;
   SwapEdges();
-  logger.mpi_log("swap tick: %fms\n", swap_tick());
+  logger.mpi_log("SwapEdges: TIME %fms\n", tick_sub());
 
   ComputeOffset();
+  // logger.mpi_log("ComputeOffset: TIME %fms\n", tick_sub());
 
   ConstructAdjacentArrays();
+  logger.mpi_log("ConstructAdjacentArrays: TIME %fms\n", tick_sub());
 
   MPI_Barrier(MPI_COMM_WORLD);
-  logger.log("finish constructing csr graph. cost time: %fms\n", tick());
+  logger.log("finish constructing csr graph. TIME %fms\n", tick());
 }
 
 

@@ -26,6 +26,7 @@ struct Settings {
   int64_t edge_desired_num {0};
   bool is_debug {false};
   bool is_verify {true};
+  bool is_swap_edges {true};
   std::string file_in;
   std::string file_out;
 };

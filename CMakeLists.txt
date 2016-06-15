@@ -18,5 +18,5 @@ add_executable(graph500 ${Srcs} ${CUDA_O})
 target_link_libraries(graph500 ${MPI_LIBRARIES})
 target_link_libraries(graph500 ${CUDA_LIBRARIES})
 
-set(FlagsOptimize "-O3 -march=native -mtune=native")
-set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -fopenmp -g")
+set(FlagsOptimize "-O3 -march=native -mtune=native -fbuiltin -freciprocal-math -fno-trapping-math")
+set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -fopenmp ${FlagsOptimize}")

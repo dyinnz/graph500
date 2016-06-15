@@ -219,8 +219,12 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   ShuffleVertexes(settings.mpi_rank, U, V, local_raw.edge_num, vertex_num);
   // logger.mpi_log("ShuffleVertexes: TIME %fms\n", tick_sub());
 
-  ShuffleEdges(settings.mpi_rank, U, V, edge_desired_num);
-  logger.mpi_log("ShuffleEdges: TIME %fms\n", tick_sub());
+  if (settings.is_shuffle_edges) {
+    ShuffleEdges(settings.mpi_rank, U, V, edge_desired_num);
+    logger.mpi_log("ShuffleEdges: TIME %fms\n", tick_sub());
+  } else {
+    logger.log("Skip shuffling edges\n");
+  }
 
   local_raw.edges = new Edge[local_raw.edge_num];
   LoadEdges(U, V, local_raw.edges, local_raw.edge_num);

@@ -67,7 +67,7 @@ ParseParameters(int argc, char * const *argv) {
         parse_bool(optarg, settings.is_verify); break;
 
       case 'f':
-        parse_bool(optarg, settings.is_swap_edges); break;
+        parse_bool(optarg, settings.is_shuffle_edges); break;
 
       case 'i':
         settings.file_in = optarg; break;
@@ -87,12 +87,13 @@ ParseParameters(int argc, char * const *argv) {
     }
   }
 
-  logger.log("Scale       : %d\n", settings.scale);
-  logger.log("Edge factor : %d\n", settings.edge_factor);
-  logger.log("Debug mode  : %d\n", settings.is_debug);
-  logger.log("Validation  : %d\n", settings.is_verify);
-  logger.log("Input file  : %s\n", settings.file_in.c_str());
-  logger.log("Output file : %s\n", settings.file_out.c_str());
+  logger.log("Scale         : %d\n", settings.scale);
+  logger.log("Edge factor   : %d\n", settings.edge_factor);
+  logger.log("Debug mode    : %d\n", settings.is_debug);
+  logger.log("Validation    : %d\n", settings.is_verify);
+  logger.log("Shuffle edges : %d\n", settings.is_shuffle_edges);
+  logger.log("Input file    : %s\n", settings.file_in.c_str());
+  logger.log("Output file   : %s\n", settings.file_out.c_str());
 }
 
 
@@ -104,8 +105,8 @@ Initialize() {
   settings.vertex_num = 1LL << settings.scale;
   settings.edge_desired_num = settings.edge_factor * settings.vertex_num;
 
-  logger.log("Total vertexes      : %d\n", settings.vertex_num);
-  logger.log("Total desired edges : %d\n", settings.edge_desired_num);
+  logger.log("Total vertexes      : %ld\n", settings.vertex_num);
+  logger.log("Total desired edges : %ld\n", settings.edge_desired_num);
 }
 
 

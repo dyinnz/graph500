@@ -90,11 +90,17 @@ Verifier::ComputeLevels() {
   for (int level = 1; !is_done; ++level) {
     is_done = true;
 
-    logger.mpi_debug("compute levels %d\n", level);
+    logger.mpi_debug("fence begin: compute levels %d\n", level);
 
     MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
     // skip unconnected vertex
     for (int64_t v = 0; v < _local_v_num; ++v) {
+
+      if (0 == v % kWinLimit) {
+        MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
+        MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
+      }
+
       if (!visited[v]) {
         int64_t global_v = _local_v_beg + v;
         int64_t global_u = _parents[v];
@@ -113,12 +119,10 @@ Verifier::ComputeLevels() {
         }
       }
 
-      if (0 == v % kWinLimit) {
-        MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
-        MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
-      }
     }
     MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
+
+    logger.mpi_debug("fence end: compute levels %d\n", level);
 
     for (int64_t v = 0; v < _local_v_num; ++v)  {
       if (!visited[v] && parent_levels[v] < kMaxLevel) {

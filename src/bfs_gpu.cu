@@ -232,10 +232,11 @@ static void MPIGatherAllBitmap(HostInfo &host_info, CudaGraphMemory &d_graph) {
 
 static void SetBFSRoot(HostInfo &host_info, CudaGraphMemory &d_graph) {
 
+  /*
   for (int v = 0; v < host_info.global_v_num; ++v) {
     logger.mpi_debug("v[%ld] 's global bitmap %ld\n", v,
         host_info.global_bitmap[v]);
-  }
+  } */
 
   if (host_info.local_v_beg <= host_info.root && host_info.root < host_info.local_v_end) {
     // set root
@@ -257,10 +258,11 @@ static void SetBFSRoot(HostInfo &host_info, CudaGraphMemory &d_graph) {
   cudaMemcpy(d_graph.global_bitmap, host_info.global_bitmap,
       sizeof(bit_type) * host_info.global_v_num, cudaMemcpyHostToDevice);
 
+  /*
   for (int v = 0; v < host_info.global_v_num; ++v) {
     logger.mpi_debug("v[%ld] 's global bitmap %ld\n", v,
         host_info.global_bitmap[v]);
-  }
+  } */
 }
 
 
@@ -281,20 +283,22 @@ static void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
   cudaMemcpy(host_info.local_bitmap, d_graph.local_bitmap,
       sizeof(bit_type) * host_info.local_v_num, cudaMemcpyDeviceToHost);
 
+  /*
   for (int v = 0; v < host_info.local_v_num; ++v) {
     logger.mpi_debug("v[%ld] 's local bitmap %ld\n", v + host_info.local_v_beg,
         host_info.local_bitmap[v]);
-  }
+  } */
 
   MPIGatherAllBitmap(host_info, d_graph);
 
   cudaMemcpy(d_graph.global_bitmap, host_info.global_bitmap,
       sizeof(bit_type) * host_info.global_v_num, cudaMemcpyHostToDevice);
 
+  /*
   for (int v = 0; v < host_info.global_v_num; ++v) {
     logger.mpi_debug("v[%ld] 's global bitmap %ld\n", v,
         host_info.global_bitmap[v]);
-  }
+  } */
 
 }
 
@@ -421,11 +425,12 @@ void CudaBFS(int64_t root,
 
   SetBFSRoot(host_info, d_graph);
 
+  /*
   for (int64_t v = 0; v < host_info.local_v_num; ++v) {
     logger.mpi_debug("v[%ld] 's parent %ld; global bitmap %d\n",
         v + host_info.local_v_beg, host_info.bfs_tree[v],
         host_info.global_bitmap[v+host_info.local_v_beg]);
-  }
+  } */
 
 
   TickOnce total_bfs_tick;
@@ -461,7 +466,7 @@ void CudaBFS(int64_t root,
 
   float bfs_time = total_bfs_tick();
   logger.log("bfs TIME %fms\n", bfs_time);
-  logger.log("TEPS: %le\n", global_v_num * 16.0 / bfs_time);
+  logger.log("TEPS: %le\n", global_v_num * 16.0 / bfs_time * 1000.0);
 
   CopyBFSTree(host_info, d_graph);
 

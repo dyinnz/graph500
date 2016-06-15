@@ -35,10 +35,10 @@ GenerateEdgeTuples(int64_t mpi_rank,
   for (int i = 0; i < scale; ++i) {
     for (int64_t e = 0; e < local_edge_num; ++e) {
       double beg_bit = (dis(gen) > kAB) ? 1.0 : 0.0;
-      double end_bit = (dis(gen) > (kCNorm*beg_bit + kANorm*(1.0 - end_bit))) ?
+      double end_bit = (dis(gen) > (kCNorm*beg_bit + kANorm*(1.0 - beg_bit))) ?
                     1.0 : 0.0;
-      U[e] += (1 << i) * beg_bit;
-      V[e] += (1 << i) * end_bit;
+      U[e] += (double)(1LL << i) * beg_bit;
+      V[e] += (double)(1LL << i) * end_bit;
     }
   }
   /*
@@ -145,6 +145,8 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
 
   auto U = new double[local_raw.edge_num];
   auto V = new double[local_raw.edge_num];
+  memset(U, 0, sizeof(double) * local_raw.edge_num);
+  memset(V, 0, sizeof(double) * local_raw.edge_num);
 
   TickOnce tick_sub;
 

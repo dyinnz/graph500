@@ -218,7 +218,6 @@ main(int argc, char *argv[]) {
   vector<int64_t> roots = SampleKeys(local_csr);
   for (auto root : roots) {
     // Run BFS here
-    root = 0;
     int64_t *bfs_tree = BuildBFSTree(local_csr, root);
 
     if (settings.is_verify) {

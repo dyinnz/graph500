@@ -96,7 +96,7 @@ Verifier::ComputeLevels() {
     // skip unconnected vertex
     for (int64_t v = 0; v < _local_v_num; ++v) {
 
-      if (0 == v % kWinLimit) {
+      if (0 == v % kWinLimit && v < average) {
         MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
         MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
       }

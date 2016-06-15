@@ -5,6 +5,7 @@
  * Date:   2016-05-27
  ******************************************************************************/
 
+#include <cstring>
 #include <tuple>
 #include <random>
 #include <algorithm>

@@ -103,17 +103,6 @@ __global__ void bfs_bottom_up_first(
 
 #include <cuda_runtime.h>
 
-inline double wtime()
-{
-	double time[2];
-	struct timeval time1;
-	gettimeofday(&time1, NULL);
-
-	time[0]=time1.tv_sec;
-	time[1]=time1.tv_usec;
-
-	return time[0]+time[1]*1.0e-6;
-}
 
 // global device variables
 
@@ -275,6 +264,15 @@ static void SetBFSRoot(HostInfo &host_info, CudaGraphMemory &d_graph) {
 }
 
 
+static void SyncIsChange(HostInfo &host_info, CudaAllocMemory &d_graph) {
+  cudaMemcpy(&host_info.change, d_graph.p_change,
+      sizeof(bool), cudaMemcpyDeviceToHost);
+  MPI_Allreduce(MPI_IN_PLACE, &host_info.change, 1, MPI_BYTE,
+      MPI_BOR, MPI_COMM_WORLD);
+  return host_info.change;
+}
+
+
 static void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
 
   // without gpu direct
@@ -298,14 +296,6 @@ static void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
         host_info.global_bitmap[v]);
   }
 
-
-  /*------ change ------*/
-  cudaMemcpy(&host_info.change, d_graph.p_change,
-      sizeof(bool), cudaMemcpyDeviceToHost);
-  MPI_Allreduce(MPI_IN_PLACE, &host_info.change, 1, MPI_BYTE,
-      MPI_BOR, MPI_COMM_WORLD);
-  // cudaMemcpy(d_graph.p_change, &host_info.change,
-      // sizeof(bool), cudaMemcpyHostToDevice);
 }
 
 
@@ -438,13 +428,17 @@ void CudaBFS(int64_t root,
   }
 
 
-  double time = wtime();
+  TickOnce total_bfs_tick;
+  TickOnce func_tick;
   do {
 
     if (false) {
+      func_tick();
       BFSTopDown<<<cuda_info.blocks_number, cuda_info.threads_per_block>>>(
           );
+      logger.mpi_log("topdown TIME : %fms\n", func_tick());
     } else {
+      func_tick();
       BFSBottomUp<<<cuda_info.blocks_number, cuda_info.threads_per_block>>>(
           d_graph.adja_arrays,
           d_graph.csr,
@@ -452,15 +446,22 @@ void CudaBFS(int64_t root,
           d_graph.local_bitmap,
           d_graph.global_bitmap,
           d_graph.p_change);
+      logger.mpi_log("topdown TIME : %fms\n", func_tick());
     }
 
+    if (!SyncIsChange(host_info, d_graph)) {
+      break;
+    }
+
+    func_tick();
     SyncWithMPI(host_info, d_graph);
+    logger.mpi_log("sync mpi TIME : %fms\n", func_tick());
 
-  } while (host_info.change);
+  } while (true);
 
-  double bfs_bw_time = wtime() - time;
-  logger.log("bfs time %lf\n", bfs_bw_time*1000);
-  logger.log("TEPS: %le\n", global_v_num * 16.0 / bfs_bw_time * 1000.0);
+  float bfs_time = total_bfs_tick();
+  logger.log("bfs TIME %fms\n", bfs_time);
+  logger.log("TEPS: %le\n", global_v_num * 16.0 / bfs_time);
 
   CopyBFSTree(host_info, d_graph);
 

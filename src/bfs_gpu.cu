@@ -284,9 +284,11 @@ static void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
 
   // without gpu direct
 
+  Tick sync_tick;
   /*------ bitmap ------*/
   cudaMemcpy(host_info.local_bitmap, d_graph.local_bitmap,
       sizeof(bit_type) * host_info.local_v_num, cudaMemcpyDeviceToHost);
+  logger.mpi_log("sync device to host TIME : %fms\n", sync_tick());
 
   /*
   for (int v = 0; v < host_info.local_v_num; ++v) {
@@ -295,9 +297,11 @@ static void SyncWithMPI(HostInfo &host_info, CudaGraphMemory &d_graph) {
   } */
 
   MPIGatherAllBitmap(host_info, d_graph);
+  logger.mpi_log("sync mpi with other TIME : %fms\n", sync_tick());
 
   cudaMemcpy(d_graph.global_bitmap, host_info.global_bitmap,
       sizeof(bit_type) * host_info.global_v_num, cudaMemcpyHostToDevice);
+  logger.mpi_log("sync host to device : %fms\n", sync_tick());
 
   /*
   for (int v = 0; v < host_info.global_v_num; ++v) {

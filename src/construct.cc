@@ -191,13 +191,17 @@ void LocalCSRGraph::ComputeOffset() {
   memset(_adja_arrays.data(), 0, sizeof(AdjacentPair) * _adja_arrays.size());
 
   // count the number of edges, use "end" temporarily
-  for (Edge &edge : _edges) {
-    if (_local_v_beg <= edge.u && edge.u < _local_v_end) {
-      _adja_arrays[edge.u - _local_v_beg].end += 1;
-    }
-    if (_local_v_beg <= edge.v && edge.v < _local_v_end) {
-      _adja_arrays[edge.v - _local_v_beg].end += 1;
-    }
+  _Pragma("omp parallel for")
+    for (size_t e = 0; e < _edges.size(); ++e) {
+      Edge &edge = _edges[e];
+      if (_local_v_beg <= edge.u && edge.u < _local_v_end) {
+        _Pragma("omp atomic update")
+          ++_adja_arrays[edge.u - _local_v_beg].end;
+      }
+      if (_local_v_beg <= edge.v && edge.v < _local_v_end) {
+        _Pragma("omp atomic update")
+          ++_adja_arrays[edge.v - _local_v_beg].end;
+      }
   }
 
   // compute prefix sum
@@ -220,9 +224,10 @@ void LocalCSRGraph::ComputeOffset() {
 
 void LocalCSRGraph::ConstructAdjacentArrays() {
   // reset the end of adjacent arrays
-  for (int64_t v = 0; v < _local_v_num; ++v) {
-    _adja_arrays[v].end = _adja_arrays[v].beg;
-  }
+  _Pragma("omp parallel for")
+    for (int64_t v = 0; v < _local_v_num; ++v) {
+      _adja_arrays[v].end = _adja_arrays[v].beg;
+    }
 
   // create edge
   _csr_mem.resize(_csr_edge_num);
@@ -230,24 +235,30 @@ void LocalCSRGraph::ConstructAdjacentArrays() {
   for (Edge &edge : _edges) {
     int64_t local_u = edge.u - _local_v_beg,
             local_v = edge.v - _local_v_beg;
+    int64_t inserted {0};
     if (0 <= local_u && local_u < _local_v_num) {
-      _csr_mem[ (_adja_arrays[local_u].end)++ ] = edge.v;
+      _Pragma("omp atomic capture") 
+        inserted = (_adja_arrays[local_u].end)++;
+      _csr_mem[inserted] = edge.v;
     }
     if (0 <= local_v && local_v < _local_v_num) {
-      _csr_mem[ (_adja_arrays[local_v].end)++ ] = edge.u;
+      _Pragma("omp atomic capture") 
+        inserted = (_adja_arrays[local_v].end)++;
+      _csr_mem[inserted] = edge.u;
     }
   }
 
   // pack
-  for (int64_t u = 0; u < _local_v_num; ++u) {
-    int64_t beg = adja_beg(u),
-            end = adja_end(u);
-    if (beg + 1 < end) {
-      std::sort(&_csr_mem[beg], &_csr_mem[end]);
-      auto end_pointer = std::unique(&_csr_mem[beg], &_csr_mem[end]);
-      _adja_arrays[u].end = end_pointer - _csr_mem.data();
+  _Pragma("omp parallel for")
+    for (int64_t u = 0; u < _local_v_num; ++u) {
+      int64_t beg = adja_beg(u),
+              end = adja_end(u);
+      if (beg + 1 < end) {
+        std::sort(&_csr_mem[beg], &_csr_mem[end]);
+        auto end_pointer = std::unique(&_csr_mem[beg], &_csr_mem[end]);
+        _adja_arrays[u].end = end_pointer - _csr_mem.data();
+      }
     }
-  }
 
   /*
   for (int64_t u = 0; u < _local_v_num; ++u) {

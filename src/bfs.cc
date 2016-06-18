@@ -84,6 +84,7 @@ SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
   // bitmap
   g_local_bitmap_size =
     (local_csr.local_v_num() + sizeof(bit_type) - 1) / sizeof(bit_type);
+
   g_global_bitmap_size =
     (local_csr.global_v_num() + sizeof(bit_type) - 1) / sizeof(bit_type);
 
@@ -129,13 +130,15 @@ SetBFSRoot(int64_t root) {
 static void
 MPIGatherAllBitmap() {
 
-  MPI_Allgather(g_local_bitmap, g_local_bitmap_size, g_mpi_bit_type,
-      g_global_bitmap, g_local_bitmap_size, g_mpi_bit_type,
+  int64_t local_bitmap_least_size = settings.least_v_num / sizeof(bit_type);
+
+  MPI_Allgather(g_local_bitmap, local_bitmap_least_size, g_mpi_bit_type,
+      g_global_bitmap, local_bitmap_least_size, g_mpi_bit_type,
       MPI_COMM_WORLD);
 
   // the last process send the remainder vertexes to others
   int64_t remainder =
-    g_global_bitmap_size - g_local_bitmap_size * settings.mpi_size;
+    g_global_bitmap_size - local_bitmap_least_size * settings.mpi_size;
   if (0 != remainder) {
 
     bit_type *bcast_buff = g_global_bitmap + g_global_bitmap_size - remainder;

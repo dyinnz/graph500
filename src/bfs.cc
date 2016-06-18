@@ -111,18 +111,15 @@ MPIGatherAllBitmap() {
   int64_t remainder = g_global_v_num % settings.mpi_size;
   if (0 != remainder) {
 
-    if (settings.mpi_rank == settings.mpi_size-1) {
-      bit_type *send_buff = g_local_bitmap + g_local_v_num
-        - remainder;
-      MPI_Bcast(send_buff, remainder, MPI_INT, settings.mpi_size-1,
-          MPI_COMM_WORLD);
+    bit_type *bcast_buff = g_global_bitmap + g_global_v_num - remainder;
 
-    } else {
-      bit_type *recv_buff = g_global_bitmap + g_global_v_num
-        - remainder;
-      MPI_Bcast(recv_buff, remainder, MPI_INT, settings.mpi_size-1,
-          MPI_COMM_WORLD);
+    if (settings.mpi_rank == settings.mpi_size-1) {
+      bit_type *local_buff = g_local_bitmap * global_bitmap;
+      memcpy(bcast_buff, local_buff, sizeof(bit_type) * remainder);
     }
+
+    MPI_Bcast(bcast_buff, remainder, MPI_INT, settings.mpi_size-1,
+        MPI_COMM_WORLD);
   }
 }
 

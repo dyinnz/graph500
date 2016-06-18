@@ -198,6 +198,10 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   }
   */
 
+  float total_calc_time {0.0f};
+  float total_mpi_time {0.0f};
+  float last_tick {0.0f};
+
   TickOnce total_bfs_tick;
   TickOnce func_tick;
 
@@ -210,7 +214,9 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
       func_tick();
       BFSBottomUp(g_bfs_tree, g_local_bitmap, g_global_bitmap, is_change);
-      logger.mpi_log("bottom up TIME : %fms\n", func_tick());
+      last_tick = func_tick();
+      logger.mpi_log("bottom up TIME : %fms\n", last_tick);
+      total_calc_time += last_tick;
     }
 
     MPI_Allreduce(MPI_IN_PLACE, &is_change, 1, MPI_BYTE, 
@@ -221,7 +227,9 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
     func_tick();
     MPIGatherAllBitmap();
-    logger.mpi_log("sync mpi TIME : %fms\n", func_tick());
+    last_tick = func_tick();
+    logger.mpi_log("sync mpi TIME : %fms\n", last_tick);
+    total_mpi_time += last_tick;
   }
 
   for (int64_t v = 0; v < g_local_v_num; ++v) {
@@ -230,7 +238,8 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   }
 
   float bfs_time = total_bfs_tick();
-  logger.log("bfs TIME %fms\n", bfs_time);
+  logger.log("bfs TIME %fms, calc TIME %lfms, mpi sync TIME %lf\n", 
+      bfs_time, total_calc_time, total_mpi_time);
   logger.log("TEPS: %le\n", g_global_v_num * 16.0 / bfs_time * 1000.0);
 }
 

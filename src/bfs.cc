@@ -114,7 +114,7 @@ MPIGatherAllBitmap() {
     bit_type *bcast_buff = g_global_bitmap + g_global_v_num - remainder;
 
     if (settings.mpi_rank == settings.mpi_size-1) {
-      bit_type *local_buff = g_local_bitmap * global_bitmap;
+      bit_type *local_buff = g_local_bitmap + g_local_v_num - remainder;
       memcpy(bcast_buff, local_buff, sizeof(bit_type) * remainder);
     }
 

@@ -1,8 +1,5 @@
 #!/bin/bash
 
-eval `modulecmd sh load mpi/openmpi-x86_64`
-eval `modulecmd sh load gcc/4.9.3`
-
 thread=20
 
 export CC=gcc

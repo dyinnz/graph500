@@ -54,12 +54,16 @@ static inline int64_t global_to_local(int64_t global) {
 
 
 static inline void set_bitmap(bit_type  * __restrict__ bitmap, int64_t index) {
-  bitmap[index] = true;
+  int64_t mem_pos = index / sizeof(bit_type);
+  int64_t bit_offset = index % sizeof(bit_type);
+  bitmap[mem_pos] |= 1 << bit_offset;
 }
 
 
 static inline bool test_bitmap(bit_type * __restrict__ bitmap, int64_t index) {
-  return bitmap[index];
+  int64_t mem_pos = index / sizeof(bit_type);
+  int64_t bit_offset = index % sizeof(bit_type);
+  return bitmap[mem_pos] & (1 << bit_offset);
 }
 
 
@@ -83,17 +87,10 @@ SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
   g_global_bitmap_size =
     (local_csr.global_v_num() + sizeof(bit_type) - 1) / sizeof(bit_type);
 
-  /*
   g_local_bitmap      = new bit_type[g_local_bitmap_size];
   g_global_bitmap     = new bit_type[g_global_bitmap_size];
   memset(g_local_bitmap, 0, sizeof(bit_type) * g_local_bitmap_size);
   memset(g_global_bitmap, 0, sizeof(bit_type) * g_global_bitmap_size);
-  */
-
-  g_local_bitmap      = new bit_type[local_csr.local_v_num()];
-  g_global_bitmap     = new bit_type[local_csr.global_v_num()];
-  memset(g_local_bitmap, 0, sizeof(bit_type) * local_csr.local_v_num());
-  memset(g_global_bitmap, 0, sizeof(bit_type) * local_csr.global_v_num());
 
   if (1 == sizeof(bit_type)) {
     g_mpi_bit_type = MPI_CHAR;
@@ -132,22 +129,23 @@ SetBFSRoot(int64_t root) {
 static void
 MPIGatherAllBitmap() {
 
-  MPI_Allgather(g_local_bitmap, settings.least_v_num, MPI_INT,
-      g_global_bitmap, settings.least_v_num, MPI_INT,
+  MPI_Allgather(g_local_bitmap, g_local_bitmap_size, g_mpi_bit_type,
+      g_global_bitmap, g_local_bitmap_size, g_mpi_bit_type,
       MPI_COMM_WORLD);
 
   // the last process send the remainder vertexes to others
-  int64_t remainder = g_global_v_num % settings.mpi_size;
+  int64_t remainder =
+    g_global_bitmap_size - g_local_bitmap_size * settings.mpi_size;
   if (0 != remainder) {
 
-    bit_type *bcast_buff = g_global_bitmap + g_global_v_num - remainder;
+    bit_type *bcast_buff = g_global_bitmap + g_global_bitmap_size - remainder;
 
     if (settings.mpi_rank == settings.mpi_size-1) {
-      bit_type *local_buff = g_local_bitmap + g_local_v_num - remainder;
+      bit_type *local_buff = g_local_bitmap + g_local_bitmap_size - remainder;
       memcpy(bcast_buff, local_buff, sizeof(bit_type) * remainder);
     }
 
-    MPI_Bcast(bcast_buff, remainder, MPI_INT, settings.mpi_size-1,
+    MPI_Bcast(bcast_buff, remainder, g_mpi_bit_type, settings.mpi_size-1,
         MPI_COMM_WORLD);
   }
 }

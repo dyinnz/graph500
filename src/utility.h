@@ -44,6 +44,7 @@ struct LocalRawGraph {
 };
 
 typedef int32_t bit_type;
+constexpr int kBitWidth {sizeof(bit_type) * 8};
 
 extern dy_logger::Logger logger;
 extern Settings settings;

@@ -5,6 +5,7 @@
  * Date:   2016-05-28
  ******************************************************************************/
 
+#include <cassert>
 #include <cstring>
 #include <queue>
 #include "utility.h"
@@ -54,15 +55,15 @@ static inline int64_t global_to_local(int64_t global) {
 
 
 static inline void set_bitmap(bit_type  * __restrict__ bitmap, int64_t index) {
-  int64_t mem_pos = index / sizeof(bit_type);
-  int64_t bit_offset = index % sizeof(bit_type);
+  int64_t mem_pos = index / kBitWidth;
+  int64_t bit_offset = index % kBitWidth;
   bitmap[mem_pos] |= 1 << bit_offset;
 }
 
 
 static inline bool test_bitmap(bit_type * __restrict__ bitmap, int64_t index) {
-  int64_t mem_pos = index / sizeof(bit_type);
-  int64_t bit_offset = index % sizeof(bit_type);
+  int64_t mem_pos = index / kBitWidth;
+  int64_t bit_offset = index % kBitWidth;
   return bitmap[mem_pos] & (1 << bit_offset);
 }
 
@@ -83,10 +84,10 @@ SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
 
   // bitmap
   g_local_bitmap_size =
-    (local_csr.local_v_num() + sizeof(bit_type) - 1) / sizeof(bit_type);
+    (local_csr.local_v_num() + kBitWidth - 1) / kBitWidth;
 
   g_global_bitmap_size =
-    (local_csr.global_v_num() + sizeof(bit_type) - 1) / sizeof(bit_type);
+    (local_csr.global_v_num() + kBitWidth - 1) / kBitWidth;
 
   g_local_bitmap      = new bit_type[g_local_bitmap_size];
   g_global_bitmap     = new bit_type[g_global_bitmap_size];
@@ -130,7 +131,7 @@ SetBFSRoot(int64_t root) {
 static void
 MPIGatherAllBitmap() {
 
-  int64_t local_bitmap_least_size = settings.least_v_num / sizeof(bit_type);
+  int64_t local_bitmap_least_size = settings.least_v_num / kBitWidth;
 
   MPI_Allgather(g_local_bitmap, local_bitmap_least_size, g_mpi_bit_type,
       g_global_bitmap, local_bitmap_least_size, g_mpi_bit_type,
@@ -171,11 +172,17 @@ BFSBottomUp(int64_t * __restrict__ bfs_tree,
       for (int64_t iter = adja_beg(local_v); iter < adja_end(local_v); ++iter) {
         int64_t global_u = next_vertex(iter);
 
-        if (test_bitmap(global_bitmap, global_u)) {
+        int64_t global_pos = global_u / kBitWidth;
+        bit_type  global_mask = 1 << (global_u % kBitWidth);
 
-          set_bitmap(local_bitmap, local_v);
+        if (global_bitmap[global_pos] & global_mask) {
+
+          int64_t local_pos = local_v / kBitWidth;
+          bit_type local_mask = 1 << (local_v % kBitWidth);
+
+          local_bitmap[local_pos] |= local_mask;
+
           bfs_tree[local_v] = global_u;
-
           is_change = true;
           break;
         }

@@ -24,6 +24,7 @@ struct Settings {
   int sample_num {64};
   int64_t vertex_num {0};
   int64_t edge_desired_num {0};
+  int64_t least_v_num {0};
   bool is_debug {false};
   bool is_verify {true};
   bool is_shuffle_edges {true};
@@ -41,6 +42,8 @@ struct LocalRawGraph {
   int64_t edge_num;
   int64_t global_edge_num;
 };
+
+typedef int32_t bit_type;
 
 extern dy_logger::Logger logger;
 extern Settings settings;
@@ -76,31 +79,17 @@ class TickOnce {
 };
 
 
-// inline std::pair<int64_t, int64_t>
-inline std::tuple<int64_t, int64_t>
-mpi_local_range(int64_t total) {
-  int64_t average = total / settings.mpi_size;
-  int64_t beg = average * settings.mpi_rank;
-  int64_t end = average * (settings.mpi_rank + 1);
-  if (settings.mpi_rank == settings.mpi_size - 1) {
-    end += total % settings.mpi_size;
-  }
-  return std::make_tuple(beg, end);
+inline bool 
+mpi_is_last_rank() {
+  return settings.mpi_rank == settings.mpi_size - 1;
 }
 
-inline int64_t
-mpi_local_num(int64_t total) {
-  int64_t average = total / settings.mpi_size;
-  if (settings.mpi_rank == settings.mpi_size - 1) {
-    average += total % settings.mpi_size;
-  }
-  return average;
-}
 
 inline int64_t
-mpi_get_owner(int64_t index, int64_t average) {
-   return std::min(index/average, int64_t(settings.mpi_size-1));
+mpi_get_owner(int64_t index, int64_t least) {
+   return std::min(index/least, int64_t(settings.mpi_size-1));
 }
+
 
 inline void
 mpi_log_barrier() {

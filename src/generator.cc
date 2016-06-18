@@ -88,15 +88,15 @@ ShuffleVertexes(int64_t mpi_rank,
  */
 static void
 ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
-  int64_t average = edge_desired_num / settings.mpi_size;
-  int64_t e_beg { -1 }, e_end { -1 };
-  tie(e_beg, e_end) = mpi_local_range(edge_desired_num);
+
+  int64_t least_e_num = edge_desired_num / settings.mpi_size;
+  int64_t e_beg = least_e_num * settings.mpi_rank;
 
   std::mt19937_64 gen;
   for (int64_t e = 0; e < edge_desired_num; ++e) {
     int64_t i = gen() % (edge_desired_num-e) + e;
-    int64_t e_own = mpi_get_owner(e, average);
-    int64_t i_own = mpi_get_owner(i, average);
+    int64_t e_own = mpi_get_owner(e, least_e_num);
+    int64_t i_own = mpi_get_owner(i, least_e_num);
 
     //logger.mpi_debug("e %ld, i %ld, e_own %ld, i_own %ld\n",
         //e, i, e_own, i_own);
@@ -141,8 +141,11 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
 
   local_raw.global_edge_num = edge_desired_num;
 
-  local_raw.edge_num = mpi_local_num(edge_desired_num);
-  logger.mpi_debug("local edge num: %ld\n", local_raw.edge_num);
+  local_raw.edge_num = edge_desired_num / settings.mpi_size;
+  if (mpi_is_last_rank()) {
+    local_raw.edge_num += edge_desired_num % settings.mpi_size;
+  }
+  logger.mpi_log("local raw edge num: %ld\n", local_raw.edge_num);
 
   auto U = new double[local_raw.edge_num];
   auto V = new double[local_raw.edge_num];
@@ -168,12 +171,10 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   local_raw.edges = new Edge[local_raw.edge_num];
   LoadEdges(U, V, local_raw.edges, local_raw.edge_num);
 
-  /*
   for (int64_t e = 0; e < local_raw.edge_num; ++e) {
     logger.mpi_debug("edges: %ld\t%ld\n",
         local_raw.edges[e].u, local_raw.edges[e].v);
   }
-  */
 
   delete []U;
   delete []V;

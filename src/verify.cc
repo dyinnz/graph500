@@ -37,8 +37,7 @@ Verifier::CheckRange() {
 bool
 Verifier::CheckParentOfRoot() {
   logger.mpi_debug("%s()\n", __func__);
-  int64_t average = _global_v_num / settings.mpi_size;
-  if (mpi_get_owner(_root, average) == settings.mpi_rank) {
+  if (mpi_get_owner(_root, settings.least_v_num) == settings.mpi_rank) {
     int64_t local_root = _root - _local_v_beg;
     if (_parents[local_root] != _root) {
       logger.mpi_error("%s(): Verify root[%ld]'s parent FAILED\n", _root);
@@ -79,7 +78,6 @@ Verifier::ComputeLevels() {
   }
 
   // init MPI resource
-  int64_t average = _global_v_num / settings.mpi_size;
 
   _win = new MPI_Win;
   memset(_win, 0, sizeof(MPI_Win));
@@ -96,7 +94,7 @@ Verifier::ComputeLevels() {
     // skip unconnected vertex
     for (int64_t v = 0; v < _local_v_num; ++v) {
 
-      if (0 == v % kWinLimit && v < average) {
+      if (0 == v % kWinLimit && v < settings.least_v_num) {
         MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
         MPI_Win_fence(MPI_MODE_NOPUT | MPI_MODE_NOPRECEDE, *_win);
       }
@@ -105,7 +103,7 @@ Verifier::ComputeLevels() {
         int64_t global_v = _local_v_beg + v;
         int64_t global_u = _parents[v];
         if (-1 == global_u || _root == global_v) continue;
-        int64_t u_owner = mpi_get_owner(global_u, average);
+        int64_t u_owner = mpi_get_owner(global_u, settings.least_v_num);
 
         if (u_owner == settings.mpi_rank) {
           // get parent level from local
@@ -113,7 +111,7 @@ Verifier::ComputeLevels() {
 
         } else {
           // get parent level from remote
-          int64_t remote_local_u = global_u - u_owner * average;
+          int64_t remote_local_u = global_u - u_owner * settings.least_v_num;
           MPI_Get(parent_levels.data() + v, 1, MPI_INT, u_owner,
               remote_local_u, 1, MPI_INT, *_win);
         }
@@ -167,16 +165,15 @@ Verifier::CheckEdgeDistance() {
 
   vector<pair<int, int>> edges_levels(_local_raw.edge_num,
                                            {kMaxLevel, kMaxLevel});
-  int64_t average = _global_v_num / settings.mpi_size;
 
   // lambda for fetch level from local or remote
   auto fetch_level = [&](int64_t global_v, int &out_level) {
-    int64_t owner = mpi_get_owner(global_v, average);
+    int64_t owner = mpi_get_owner(global_v, settings.least_v_num);
     if (owner == settings.mpi_rank) {
       out_level = _levels[global_v - _local_v_beg];
 
     } else {
-      int64_t remote_local_v = global_v - owner * average;
+      int64_t remote_local_v = global_v - owner * settings.least_v_num;
       MPI_Get(&out_level, 1, MPI_INT, owner,
           remote_local_v, 1, MPI_INT, *_win);
     }
@@ -236,15 +233,13 @@ Verifier::GetPairParents() {
   MPI_Win_create(_parents, _local_v_num * sizeof(int64_t), sizeof(int64_t),
       MPI_INFO_NULL, MPI_COMM_WORLD, &parents_win);
 
-  int64_t average = _global_v_num / settings.mpi_size;
-
   auto fetch_parent = [&](int64_t global_v, int64_t &parent) {
-    int64_t owner = mpi_get_owner(global_v, average);
+    int64_t owner = mpi_get_owner(global_v, settings.least_v_num);
     if (owner == settings.mpi_rank) {
       parent = _parents[global_v - _local_v_beg];
 
     } else {
-      int64_t remote_local_v = global_v - owner * average;
+      int64_t remote_local_v = global_v - owner * settings.least_v_num;
       MPI_Get(&parent, 1, MPI_LONG_LONG, owner,
           remote_local_v, 1, MPI_LONG_LONG, parents_win);
     }
@@ -280,7 +275,6 @@ Verifier::UpdateParentsValid(
   logger.mpi_debug("%s():\n", __func__);
 
   vector<int8_t> parents_valid(_local_v_num, false);
-  int64_t average = _global_v_num / settings.mpi_size;
   int8_t kTrue {true};
 
   // update valid
@@ -289,12 +283,12 @@ Verifier::UpdateParentsValid(
       sizeof(int8_t), MPI_INFO_NULL, MPI_COMM_WORLD, &valid_win);
 
   auto update_valid = [&](int64_t global_v) {
-    int64_t owner = mpi_get_owner(global_v, average);
+    int64_t owner = mpi_get_owner(global_v, settings.least_v_num);
     if (owner == settings.mpi_rank) {
       parents_valid[global_v - _local_v_beg] = true;
 
     } else {
-      int64_t remote_local_v = global_v - owner * average;
+      int64_t remote_local_v = global_v - owner * settings.least_v_num;
       MPI_Put(&kTrue, 1, MPI_CHAR, owner,
           remote_local_v, 1, MPI_CHAR, valid_win);
     }

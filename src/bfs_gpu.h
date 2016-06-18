@@ -2,8 +2,6 @@
 
 #include "utility.h"
 
-typedef int bit_type;
-
 // struct
 
 struct CudaInfo {

@@ -104,9 +104,12 @@ static void
 Initialize() {
   settings.vertex_num = 1LL << settings.scale;
   settings.edge_desired_num = settings.edge_factor * settings.vertex_num;
+  settings.least_v_num = settings.vertex_num / settings.mpi_size 
+    / sizeof(bit_type) * sizeof(bit_type);
 
   logger.log("Total vertexes      : %ld\n", settings.vertex_num);
   logger.log("Total desired edges : %ld\n", settings.edge_desired_num);
+  logger.log("Least vertex number : %ld\n", settings.least_v_num);
 }
 
 
@@ -114,8 +117,7 @@ static bool
 CheckConnection(LocalCSRGraph &local_csr, int64_t index) {
   bool is_connect {false};
 
-  int64_t index_owner = mpi_get_owner(index,
-      settings.vertex_num / settings.mpi_size);
+  int64_t index_owner = mpi_get_owner(index, settings.least_v_num);
   if (settings.mpi_rank == index_owner) {
     is_connect = local_csr.IsConnect(index);
   }

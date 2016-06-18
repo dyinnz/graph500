@@ -22,6 +22,7 @@ using std::make_tuple;
 
 
 void LocalCSRGraph::GetVertexNumber() {
+  /*
   int64_t max_vn { -1 };
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
     max_vn = std::max(max_vn, raw_edge_u(e));
@@ -29,10 +30,17 @@ void LocalCSRGraph::GetVertexNumber() {
   }
   MPI_Allreduce(MPI_IN_PLACE, &max_vn, 1, MPI_LONG_LONG, MPI_MAX,
       MPI_COMM_WORLD);
-  // _global_v_num = max_vn + 1;
+  _global_v_num = max_vn + 1;
+  */
   _global_v_num = (1L << settings.scale);
 
-  tie(_local_v_beg, _local_v_end) = mpi_local_range(_global_v_num);
+  // get the local vertexes range
+  _local_v_beg = settings.least_v_num * settings.mpi_rank;
+  _local_v_end = settings.least_v_num * (settings.mpi_rank + 1);
+
+  if (settings.mpi_rank == settings.mpi_size - 1) {
+    _local_v_end = _global_v_num;
+  }
   _local_v_num = _local_v_end - _local_v_beg;
 
   logger.log("global vertex num: %ld\n", _global_v_num);
@@ -47,14 +55,13 @@ LocalCSRGraph::DivideEdgeByOwner() {
 
   // divide raw edges by their own
   vector<vector<Edge>> edges_lists(mpi_size);
-  int64_t average = _global_v_num / mpi_size;
 
   for (int64_t e = 0; e < _local_raw.edge_num; ++e) {
     Edge &edge = _local_raw.edges[e];
     // skip self loop
     if (edge.u != edge.v) {
-      int64_t u_owner = mpi_get_owner(edge.u, average),
-              v_owner = mpi_get_owner(edge.v, average);
+      int64_t u_owner = mpi_get_owner(edge.u, settings.least_v_num),
+              v_owner = mpi_get_owner(edge.v, settings.least_v_num);
 
       if (u_owner == v_owner) {
         edges_lists[u_owner].push_back(edge);

@@ -11,7 +11,6 @@
 #include "construct.h"
 #include "bfs_gpu.h"
 
-int64_t g_average;
 int64_t g_local_v_num;
 int64_t g_global_v_num;
 int64_t g_local_v_beg;
@@ -19,6 +18,12 @@ int64_t g_local_v_end;
 int64_t * __restrict__ g_local_adja_arrays {nullptr};
 int64_t * __restrict__ g_local_csr_mem {nullptr};
 int64_t * __restrict__ g_bfs_tree {nullptr};
+
+
+// for bitmap
+int64_t g_local_bitmap_size;
+int64_t g_global_bitmap_size;
+MPI_Datatype g_mpi_bit_type;
 bit_type * __restrict__ g_local_bitmap {nullptr};
 bit_type * __restrict__ g_global_bitmap {nullptr};
 
@@ -63,20 +68,44 @@ static inline bool test_bitmap(bit_type * __restrict__ bitmap, int64_t index) {
 
 static void
 SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
-  g_average           = local_csr.global_v_num() / settings.mpi_size;
+  // graph
   g_local_v_num       = local_csr.local_v_num();
   g_global_v_num      = local_csr.global_v_num();
   g_local_v_beg       = local_csr.local_v_beg();
   g_local_v_end       = local_csr.local_v_end();
   g_local_adja_arrays = (int64_t*)local_csr.adja_arrays();
   g_local_csr_mem     = local_csr.csr_mem();
+  g_bfs_tree          = bfs_tree;
+
+  // bitmap
+  g_local_bitmap_size =
+    (local_csr.local_v_num() + sizeof(bit_type) - 1) / sizeof(bit_type);
+  g_global_bitmap_size =
+    (local_csr.global_v_num() + sizeof(bit_type) - 1) / sizeof(bit_type);
+
+  /*
+  g_local_bitmap      = new bit_type[g_local_bitmap_size];
+  g_global_bitmap     = new bit_type[g_global_bitmap_size];
+  memset(g_local_bitmap, 0, sizeof(bit_type) * g_local_bitmap_size);
+  memset(g_global_bitmap, 0, sizeof(bit_type) * g_global_bitmap_size);
+  */
 
   g_local_bitmap      = new bit_type[local_csr.local_v_num()];
   g_global_bitmap     = new bit_type[local_csr.global_v_num()];
   memset(g_local_bitmap, 0, sizeof(bit_type) * local_csr.local_v_num());
   memset(g_global_bitmap, 0, sizeof(bit_type) * local_csr.global_v_num());
 
-  g_bfs_tree          = bfs_tree;
+  if (1 == sizeof(bit_type)) {
+    g_mpi_bit_type = MPI_CHAR;
+  } else if (2 == sizeof(bit_type)) {
+    g_mpi_bit_type = MPI_SHORT;
+  } else if (4 == sizeof(bit_type)) {
+    g_mpi_bit_type = MPI_INT;
+  } else if (8 == sizeof(bit_type)) {
+    g_mpi_bit_type = MPI_LONG_LONG;
+  } else {
+    g_mpi_bit_type = MPI_INT;
+  }
 }
 
 
@@ -90,7 +119,7 @@ ReleaseMemory() {
 static void
 SetBFSRoot(int64_t root) {
 
-  if (settings.mpi_rank == mpi_get_owner(root, g_average)) {
+  if (settings.mpi_rank == mpi_get_owner(root, settings.least_v_num)) {
     int64_t local_root = global_to_local(root);
     g_bfs_tree[local_root] = root;
     set_bitmap(g_local_bitmap, local_root);
@@ -103,8 +132,8 @@ SetBFSRoot(int64_t root) {
 static void
 MPIGatherAllBitmap() {
 
-  MPI_Allgather(g_local_bitmap, g_average, MPI_INT,
-      g_global_bitmap, g_average, MPI_INT,
+  MPI_Allgather(g_local_bitmap, settings.least_v_num, MPI_INT,
+      g_global_bitmap, settings.least_v_num, MPI_INT,
       MPI_COMM_WORLD);
 
   // the last process send the remainder vertexes to others

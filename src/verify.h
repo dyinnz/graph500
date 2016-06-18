@@ -44,7 +44,12 @@ class Verifier {
         LocalRawGraph &local_raw)
       : _parents(parents), _global_v_num(global_v_num), _root(root),
       _local_raw(local_raw) {
-        std::tie(_local_v_beg, _local_v_end) = mpi_local_range(global_v_num);
+        _local_v_beg = settings.least_v_num * settings.mpi_rank;
+        _local_v_end = settings.least_v_num * (settings.mpi_rank + 1);
+
+        if (settings.mpi_rank == settings.mpi_size - 1) {
+          _local_v_end = _global_v_num;
+        }
         _local_v_num = _local_v_end - _local_v_beg;
       }
 

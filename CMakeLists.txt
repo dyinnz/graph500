@@ -12,4 +12,4 @@ add_executable(graph500 ${Srcs})
 target_link_libraries(graph500 ${MPI_LIBRARIES})
 
 set(FlagsOptimize "-O3 -march=native -mtune=native -fbuiltin -freciprocal-math -fno-trapping-math")
-set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -fopenmp -g ")
+set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -fopenmp ${FlagsOptimize}")

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-/opt/openmpi-1.10.2/bin/mpirun -hostfile ./hostfile -npernode 4 ./run.sh $* > test.log
+/usr/lib64/openmpi/bin/mpirun -hostfile ./hostfile -npernode 20 ./run.sh $* > test.log

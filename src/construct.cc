@@ -29,7 +29,8 @@ void LocalCSRGraph::GetVertexNumber() {
   }
   MPI_Allreduce(MPI_IN_PLACE, &max_vn, 1, MPI_LONG_LONG, MPI_MAX,
       MPI_COMM_WORLD);
-  _global_v_num = max_vn + 1;
+  // _global_v_num = max_vn + 1;
+  _global_v_num = (1L << settings.scale);
 
   tie(_local_v_beg, _local_v_end) = mpi_local_range(_global_v_num);
   _local_v_num = _local_v_end - _local_v_beg;

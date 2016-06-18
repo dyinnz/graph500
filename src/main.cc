@@ -105,7 +105,7 @@ Initialize() {
   settings.vertex_num = 1LL << settings.scale;
   settings.edge_desired_num = settings.edge_factor * settings.vertex_num;
   settings.least_v_num = settings.vertex_num / settings.mpi_size 
-    / sizeof(bit_type) * sizeof(bit_type);
+    / kBitWidth * kBitWidth;
 
   logger.log("Total vertexes      : %ld\n", settings.vertex_num);
   logger.log("Total desired edges : %ld\n", settings.edge_desired_num);

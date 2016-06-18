@@ -127,7 +127,6 @@ void CSRGraph::ConstructAdjacentArrays() {
 
   for (int64_t u = 0; u < _vertex_num; ++u) {
     printf("u %ld beg %ld, end %ld\n", u, _adja_arrays[u].beg, _adja_arrays[u].end);
-    //_Pragma("omp parallel for")
     for (auto iter = adja_beg(u); iter != adja_end(u); ++iter) {
       int64_t v = next_vertex(iter);
       printf("%ld ", v);

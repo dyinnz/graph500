@@ -8,9 +8,12 @@
 #include <cassert>
 #include <cstring>
 #include <queue>
+#include <vector>
 #include "utility.h"
 #include "construct.h"
 #include "bfs_gpu.h"
+
+using std::vector;
 
 int64_t g_local_v_num;
 int64_t g_global_v_num;
@@ -200,14 +203,33 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
 
 
 static void
+FillunvisitedFromBitmap(bit_type * __restrict__ local_bitmap, 
+    vector<int64_t> &unvisited) {
+
+  unvisited.clear();
+
+  for (int64_t v = 0; v < g_local_v_num; ++v) {
+    if (!test_bitmap(local_bitmap, v)) {
+      unvisited.push_back(v);
+    }
+  }
+}
+
+
+static void
 BFSBottomUp(int64_t * __restrict__ bfs_tree,
     bit_type * __restrict__ local_bitmap,
     bit_type * __restrict__ global_bitmap,
+    vector<int64_t> &unvisited_old,
+    vector<int64_t> &unvisited_new,
     bool &is_change) {
+
+  unvisited_new.clear();
 
   is_change = false;
 
-  for (int64_t local_v = 0; local_v < g_local_v_num; ++local_v) {
+  for (size_t i = 0; i < unvisited_old.size(); ++i) {
+    int64_t local_v = unvisited_old[i];
 
     int64_t global_v = local_to_global(local_v);
     if (-1 == bfs_tree[local_v]) {
@@ -217,12 +239,10 @@ BFSBottomUp(int64_t * __restrict__ bfs_tree,
 
         int64_t global_pos = global_u / kBitWidth;
         bit_type  global_mask = 1 << (global_u % kBitWidth);
-
         if (global_bitmap[global_pos] & global_mask) {
 
           int64_t local_pos = local_v / kBitWidth;
           bit_type local_mask = 1 << (local_v % kBitWidth);
-
           local_bitmap[local_pos] |= local_mask;
 
           bfs_tree[local_v] = global_u;
@@ -230,6 +250,10 @@ BFSBottomUp(int64_t * __restrict__ bfs_tree,
           break;
         }
       }
+    }
+
+    if (-1 == bfs_tree[local_v]) {
+      unvisited_new.push_back(local_v);
     }
   }
 }
@@ -255,7 +279,10 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   TickOnce total_bfs_tick;
   TickOnce func_tick;
 
-
+  vector<int64_t> unvisited_old;
+  vector<int64_t> unvisited_new;
+  unvisited_old.reserve(g_local_v_num);
+  unvisited_new.reserve(g_local_v_num);
 
   for (;;) {
     bool is_change = false;
@@ -272,7 +299,22 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
     } else {
 
       func_tick();
-      BFSBottomUp(g_bfs_tree, g_local_bitmap, g_global_bitmap, is_change);
+
+      static bool is_init_unvisited {false};
+      if (!is_init_unvisited) {
+        is_init_unvisited = true;
+
+        FillunvisitedFromBitmap(g_local_bitmap, unvisited_old);
+      }
+
+      BFSBottomUp(g_bfs_tree, 
+          g_local_bitmap, 
+          g_global_bitmap, 
+          unvisited_old,
+          unvisited_new,
+          is_change);
+      std::swap(unvisited_old, unvisited_new);
+
       last_tick = func_tick();
       logger.mpi_log("bottom up TIME : %fms\n", last_tick);
       total_calc_time += last_tick;

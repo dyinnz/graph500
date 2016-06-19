@@ -209,7 +209,7 @@ FillunvisitedFromBitmap(bit_type * __restrict__ local_bitmap,
   unvisited.clear();
 
   for (int64_t v = 0; v < g_local_v_num; ++v) {
-    if (!test_bitmap(local_bitmap, v)) {
+    if (!test_bitmap(local_bitmap, v) && adja_beg(v) < adja_end(v)) {
       unvisited.push_back(v);
     }
   }
@@ -228,6 +228,7 @@ BFSBottomUp(int64_t * __restrict__ bfs_tree,
 
   is_change = false;
 
+  logger.mpi_log("unvisited size: %zu\n", unvisited_old.size());
   for (size_t i = 0; i < unvisited_old.size(); ++i) {
     int64_t local_v = unvisited_old[i];
 

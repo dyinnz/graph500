@@ -236,6 +236,7 @@ InitQueue(vector<QueuePair> &current_queue,
 
 static void
 BFSTopDown(int64_t * __restrict__ bfs_tree,
+    bit_type * __restrict__ local_bitmap,
     bit_type * __restrict__ global_bitmap,
     vector<QueuePair> &current_queue,
     vector<vector<QueuePair>> &scatter_queues,
@@ -254,6 +255,7 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
     if (-1 == bfs_tree[local_u]) {
       bfs_tree[local_u] = current_queue[i].parent;
       set_bitmap(global_bitmap, global_u);
+      set_bitmap(local_bitmap, local_u);
     }
 
 
@@ -288,6 +290,34 @@ FillunvisitedFromBitmap(bit_type * __restrict__ local_bitmap,
   }
 }
 
+
+static void
+BFSSwitch(vector<QueuePair> &current_queue,
+    bit_type * __restrict__ local_bitmap,
+    bit_type * __restrict__ global_bitmap,
+    vector<int64_t> &unvisited) {
+
+  for (size_t i = 0; i < current_queue.size(); ++i) {
+    const int64_t global_u = current_queue[i].self;
+    const int64_t local_u = global_to_local(global_u);
+
+    if (-1 == g_bfs_tree[local_u]) {
+      g_bfs_tree[local_u] = current_queue[i].parent;
+      set_bitmap(global_bitmap, global_u);
+      set_bitmap(local_bitmap, local_u);
+    }
+  }
+
+  unvisited.clear();
+
+  for (int64_t v = 0; v < g_local_v_num; ++v) {
+    if (!test_bitmap(local_bitmap, v) && adja_beg(v) < adja_end(v)) {
+      unvisited.push_back(v);
+    }
+  }
+
+  MPIGatherAllBitmap();
+}
 
 static void
 BFSBottomUp(int64_t * __restrict__ bfs_tree,
@@ -358,10 +388,10 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   unvisited_old.reserve(g_local_v_num);
   unvisited_new.reserve(g_local_v_num);
 
-  for (;;) {
+  for (int level = 0; ; ++level) {
     bool is_change = false;
 
-    bool is_topdown = true;
+    bool is_topdown = level < 2;
 
     if (is_topdown) {
       func_tick();
@@ -380,6 +410,7 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
       */
 
       BFSTopDown(g_bfs_tree,
+          g_local_bitmap,
           g_global_bitmap,
           g_current_queue,
           g_scatter_queues,
@@ -390,14 +421,20 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
       total_calc_time += last_tick;
 
     } else {
-      func_tick();
+
 
       static bool is_init_unvisited {false};
       if (!is_init_unvisited) {
         is_init_unvisited = true;
 
-        FillunvisitedFromBitmap(g_local_bitmap, unvisited_old);
+        // FillunvisitedFromBitmap(g_local_bitmap, g_global_bitmap, unvisited_old);
+        TickOnce switch_tick;
+        BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap, 
+            unvisited_old);
+        logger.mpi_log("switch TIME: %fms\n", switch_tick);
       }
+
+      func_tick();
 
       BFSBottomUp(g_bfs_tree, 
           g_local_bitmap, 

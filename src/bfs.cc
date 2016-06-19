@@ -431,7 +431,7 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
         TickOnce switch_tick;
         BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap, 
             unvisited_old);
-        logger.mpi_log("switch TIME: %fms\n", switch_tick);
+        logger.mpi_log("switch TIME: %fms\n", switch_tick());
       }
 
       func_tick();

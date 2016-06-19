@@ -127,6 +127,44 @@ MPIGatherAllBitmap() {
 }
 
 
+static void
+BFSTopDown(int64_t * __restrict__ bfs_tree,
+           bit_type * __restrict__ local_bitmap,
+           bit_type * __restrict__ global_bitmap,
+           int64_t * __restrict__ queue,
+           int64_t * __restrict__ q_beg,
+           int64_t * __restrict__ q_end,
+           bool &is_change) {
+
+  is_change = false;
+
+  const int64_t old_end = * q_end;
+
+  int64_t new_end = old_end;
+
+  for (int64_t index = * q_beg; index < old_end; ++index) {
+
+    const int64_t global_u = queue[index];
+
+    const int64_t local_u = global_to_local(global_u);
+      for (int64_t iter = adja_beg(local_u); iter < adja_end(local_u); ++iter) {
+        int64_t global_v = next_vertex(iter);
+
+        if (test_bitmap(global_bitmap, global_v)) {
+          const int64_t local_v = global_to_local(global_v);
+          set_bitmap(local_bitmap, local_v);
+          bfs_tree[local_v] = global_u;
+
+          queue[new_end] = global_v;
+          new_end ++;
+
+          is_change = true;
+          break;
+        }
+      }
+    }
+  }
+}
 
 static void
 BFSBottomUp(int64_t * __restrict__ bfs_tree,
@@ -166,7 +204,7 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   /*
   for (int64_t v = 0; v < g_local_v_num; ++v) {
     logger.mpi_debug("before bfs, v[%ld]'s parent %ld; global bitmap %d\n",
-        local_to_global(v), g_bfs_tree[v], 
+        local_to_global(v), g_bfs_tree[v],
         test_bitmap(g_global_bitmap, local_to_global(v)));
   }
   */
@@ -178,15 +216,21 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
     bool is_change = false;
 
     if (false) {
-      // BFSTopDown
-    } else {
+        BFSTopDown(g_bfs_tree,
+                g_local_bitmap,
+                g_global_bitmap,
+                queue,
+                &q_beg,
+                &q_end,
+                is_change);
+        } else {
 
-      func_tick();
-      BFSBottomUp(g_bfs_tree, g_local_bitmap, g_global_bitmap, is_change);
-      logger.mpi_log("bottom up TIME : %fms\n", func_tick());
-    }
+            func_tick();
+            BFSBottomUp(g_bfs_tree, g_local_bitmap, g_global_bitmap, is_change);
+            logger.mpi_log("bottom up TIME : %fms\n", func_tick());
+        }
 
-    MPI_Allreduce(MPI_IN_PLACE, &is_change, 1, MPI_BYTE, 
+    MPI_Allreduce(MPI_IN_PLACE, &is_change, 1, MPI_BYTE,
         MPI_BOR, MPI_COMM_WORLD);
     if (!is_change) {
       break;
@@ -198,7 +242,7 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   }
 
   for (int64_t v = 0; v < g_local_v_num; ++v) {
-    logger.mpi_debug("after bfs, v[%ld]'s parent %ld\n", 
+    logger.mpi_debug("after bfs, v[%ld]'s parent %ld\n",
         local_to_global(v), g_bfs_tree[v]);
   }
 

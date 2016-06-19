@@ -7,13 +7,13 @@
 
 #include <cassert>
 #include <cstring>
-#include <queue>
 #include <vector>
 #include "utility.h"
 #include "construct.h"
 #include "bfs_gpu.h"
 
 using std::vector;
+
 
 int64_t g_local_v_num;
 int64_t g_global_v_num;
@@ -33,6 +33,9 @@ bit_type * __restrict__ g_global_bitmap {nullptr};
 
 int64_t * __restrict__ g_queue {nullptr};
 int64_t q_beg, q_end;
+
+vector<int64_t> g_parent_vec;
+
 
 static inline int64_t adja_beg(int64_t u) {
   return g_local_adja_arrays[u * 2];
@@ -112,7 +115,6 @@ SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
   }
 
   g_queue = new int64_t[local_csr.global_v_num()];
-
 }
 
 
@@ -165,9 +167,8 @@ MPIGatherAllBitmap() {
 
 static void
 BFSTopDown(int64_t * __restrict__ bfs_tree,
-    bit_type * __restrict__ local_bitmap,
     bit_type * __restrict__ global_bitmap,
-    int64_t * __restrict__ queue,
+    int64_t * __restrict__ g_queue,
     int64_t * __restrict__ q_beg,
     int64_t * __restrict__ q_end,
     bool &is_change) {
@@ -180,7 +181,7 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
 
   for (int64_t index = * q_beg; index < old_end; ++index) {
 
-    const int64_t global_u = queue[index];
+    const int64_t global_u = g_queue[index];
 
     const int64_t local_u = global_to_local(global_u);
     for (int64_t iter = adja_beg(local_u); iter < adja_end(local_u); ++iter) {
@@ -188,10 +189,14 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
 
       if (test_bitmap(global_bitmap, global_v)) {
         const int64_t local_v = global_to_local(global_v);
-        set_bitmap(local_bitmap, local_v);
-        bfs_tree[local_v] = global_u;
+        set_bitmap(global_bitmap, global_v);
 
-        queue[new_end] = global_v;
+        if (g_local_v_beg <= global_v && global_v < g_local_v_end) {
+          bfs_tree[local_v] = global_u;
+        } else {
+          g_queue[new_end] = global_v;
+          g_parent_vec.push_back(global_u);
+        }
         new_end ++;
 
         is_change = true;
@@ -199,6 +204,9 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
       }
     }
   }
+
+  *q_beg = old_end;
+  *q_end = new_end;
 }
 
 
@@ -266,12 +274,12 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   SetBFSRoot(root);
 
   /*
-  for (int64_t v = 0; v < g_local_v_num; ++v) {
-    logger.mpi_debug("before bfs, v[%ld]'s parent %ld; global bitmap %d\n",
-        local_to_global(v), g_bfs_tree[v],
-        test_bitmap(g_global_bitmap, local_to_global(v)));
-  }
-  */
+     for (int64_t v = 0; v < g_local_v_num; ++v) {
+     logger.mpi_debug("before bfs, v[%ld]'s parent %ld; global bitmap %d\n",
+     local_to_global(v), g_bfs_tree[v],
+     test_bitmap(g_global_bitmap, local_to_global(v)));
+     }
+     */
 
   float total_calc_time {0.0f};
   float total_mpi_time {0.0f};
@@ -290,7 +298,6 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
     if (false) {
       BFSTopDown(g_bfs_tree,
-          g_local_bitmap,
           g_global_bitmap,
           g_queue,
           &q_beg,

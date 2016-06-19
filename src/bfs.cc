@@ -234,7 +234,6 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
     if (false) {
       BFSTopDown(g_bfs_tree,
-              g_local_bitmap,
               g_global_bitmap,
               g_queue,
               &q_beg,

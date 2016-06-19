@@ -22,6 +22,8 @@ int64_t * __restrict__ g_bfs_tree {nullptr};
 bit_type * __restrict__ g_local_bitmap {nullptr};
 bit_type * __restrict__ g_global_bitmap {nullptr};
 
+int64_t * __restrict__ g_queue {nullptr};
+int64_t q_beg, q_end;
 
 static inline int64_t adja_beg(int64_t u) {
   return g_local_adja_arrays[u * 2];
@@ -77,6 +79,8 @@ SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
   memset(g_global_bitmap, 0, sizeof(bit_type) * local_csr.global_v_num());
 
   g_bfs_tree          = bfs_tree;
+
+  g_queue = new int64_t[local_csr.global_v_num()];
 }
 
 
@@ -212,6 +216,8 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   TickOnce total_bfs_tick;
   TickOnce func_tick;
 
+
+
   for (;;) {
     bool is_change = false;
 
@@ -219,7 +225,7 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
         BFSTopDown(g_bfs_tree,
                 g_local_bitmap,
                 g_global_bitmap,
-                queue,
+                g_queue,
                 &q_beg,
                 &q_end,
                 is_change);

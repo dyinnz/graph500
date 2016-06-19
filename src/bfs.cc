@@ -23,6 +23,11 @@ int64_t * __restrict__ g_local_adja_arrays {nullptr};
 int64_t * __restrict__ g_local_csr_mem {nullptr};
 int64_t * __restrict__ g_bfs_tree {nullptr};
 
+struct QueuePair {
+  int64_t parent;
+  int64_t self;
+};
+
 
 // for bitmap
 int64_t g_local_bitmap_size;
@@ -31,10 +36,10 @@ MPI_Datatype g_mpi_bit_type;
 bit_type * __restrict__ g_local_bitmap {nullptr};
 bit_type * __restrict__ g_global_bitmap {nullptr};
 
-int64_t * __restrict__ g_queue {nullptr};
-int64_t q_beg, q_end;
 
-vector<int64_t> g_parent_vec;
+// for topdown
+vector<QueuePair> g_current_queue;
+vector<vector<QueuePair>> g_scatter_queues;
 
 
 static inline int64_t adja_beg(int64_t u) {
@@ -113,8 +118,6 @@ SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
   } else {
     g_mpi_bit_type = MPI_INT;
   }
-
-  g_queue = new int64_t[local_csr.global_v_num()];
 }
 
 
@@ -135,6 +138,60 @@ SetBFSRoot(int64_t root) {
   }
 
   set_bitmap(g_global_bitmap, root);
+}
+
+static void
+MPIGatherQueue() {
+  int64_t mpi_size = settings.mpi_size;
+  int64_t mpi_rank = settings.mpi_rank;
+
+  // gather the number
+  vector<int> gather_nums(settings.mpi_size);
+  for (size_t r = 0; r < gather_nums.size(); ++r) {
+    gather_nums[r] = g_scatter_queues[r].size();
+    /*
+    logger.mpi_debug("%s(): scatter rank %ld size: %ld\n", 
+        __func__, r, gather_nums[r]);
+        */
+  }
+  MPI_Allreduce(MPI_IN_PLACE, gather_nums.data(), mpi_size,
+      MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+
+  // mpi sync
+  g_current_queue.clear();
+  g_current_queue.resize(gather_nums[mpi_rank]);
+  logger.mpi_debug("%s(): total queue size: %ld\n", 
+      __func__, gather_nums[mpi_rank]);
+
+  for (int base = 0; base < mpi_size; ++base) {
+
+    if (base == mpi_rank) {
+      QueuePair *offset = g_current_queue.data();
+      memcpy(offset, g_scatter_queues[base].data(), 
+          g_scatter_queues[base].size() * sizeof(QueuePair));
+      offset += g_scatter_queues[base].size();
+
+      for (int i = 0; i < mpi_size; ++i) if (i != mpi_rank) {
+        MPI_Status status;
+        memset(&status, 0, sizeof(MPI_Status));
+        MPI_Probe(i, 0, MPI_COMM_WORLD, &status);
+
+        int recv_count {0};
+        MPI_Get_count(&status, MPI_LONG_LONG, &recv_count);
+
+        MPI_Recv(offset, recv_count, MPI_LONG_LONG, i, 0,
+            MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        offset += recv_count / 2;
+
+        //logger.mpi_debug("current queue size: %ld\n", 
+            //offset - g_current_queue.data());
+      }
+
+    } else {
+      MPI_Send(g_scatter_queues[base].data(), g_scatter_queues[base].size() * 2,
+          MPI_LONG_LONG, base, 0, MPI_COMM_WORLD);
+    }
+  }
 }
 
 
@@ -166,47 +223,55 @@ MPIGatherAllBitmap() {
 
 
 static void
+InitQueue(vector<QueuePair> &current_queue, 
+    vector<vector<QueuePair>> &scatter_queues,
+    int64_t root) {
+  current_queue.clear();
+  if (mpi_get_owner(root, settings.least_v_num) == settings.mpi_rank) {
+    current_queue.push_back( {root, root} );
+  }
+  scatter_queues.resize(settings.mpi_size);
+}
+
+
+static void
 BFSTopDown(int64_t * __restrict__ bfs_tree,
     bit_type * __restrict__ global_bitmap,
-    int64_t * __restrict__ g_queue,
-    int64_t * __restrict__ q_beg,
-    int64_t * __restrict__ q_end,
+    vector<QueuePair> &current_queue,
+    vector<vector<QueuePair>> &scatter_queues,
     bool &is_change) {
+
+  for (auto &q : scatter_queues) {
+    q.clear();
+  }
 
   is_change = false;
 
-  const int64_t old_end = * q_end;
-
-  int64_t new_end = old_end;
-
-  for (int64_t index = * q_beg; index < old_end; ++index) {
-
-    const int64_t global_u = g_queue[index];
-
+  for (size_t i = 0; i < current_queue.size(); ++i) {
+    const int64_t global_u = current_queue[i].self;
     const int64_t local_u = global_to_local(global_u);
+
+    if (-1 == bfs_tree[local_u]) {
+      bfs_tree[local_u] = current_queue[i].parent;
+      set_bitmap(global_bitmap, global_u);
+    }
+
+
     for (int64_t iter = adja_beg(local_u); iter < adja_end(local_u); ++iter) {
       int64_t global_v = next_vertex(iter);
 
-      if (test_bitmap(global_bitmap, global_v)) {
-        const int64_t local_v = global_to_local(global_v);
+      if (!test_bitmap(global_bitmap, global_v)) {
         set_bitmap(global_bitmap, global_v);
 
-        if (g_local_v_beg <= global_v && global_v < g_local_v_end) {
-          bfs_tree[local_v] = global_u;
-        } else {
-          g_queue[new_end] = global_v;
-          g_parent_vec.push_back(global_u);
-        }
-        new_end ++;
+        // logger.mpi_debug("%s(): u %ld, v %ld\n", __func__, global_u, global_v);
+
+        int64_t v_owner = mpi_get_owner(global_v, settings.least_v_num);
+        scatter_queues[v_owner].push_back( {global_u, global_v} );
 
         is_change = true;
-        break;
       }
     }
   }
-
-  *q_beg = old_end;
-  *q_end = new_end;
 }
 
 
@@ -296,16 +361,35 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   for (;;) {
     bool is_change = false;
 
-    if (false) {
+    bool is_topdown = true;
+
+    if (is_topdown) {
+      func_tick();
+
+      static bool is_init_queue {false};
+      if (!is_init_queue) {
+        is_init_queue = true;
+
+        InitQueue(g_current_queue, g_scatter_queues, root);
+      }
+
+      /*
+      for (auto &p : g_current_queue) {
+        logger.mpi_debug("current queue: %ld's parent %ld\n", p.self, p.parent);
+      }
+      */
+
       BFSTopDown(g_bfs_tree,
           g_global_bitmap,
-          g_queue,
-          &q_beg,
-          &q_end,
+          g_current_queue,
+          g_scatter_queues,
           is_change);
 
-    } else {
+      last_tick = func_tick();
+      logger.mpi_log("top down TIME : %fms\n", last_tick);
+      total_calc_time += last_tick;
 
+    } else {
       func_tick();
 
       static bool is_init_unvisited {false};
@@ -334,11 +418,20 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
       break;
     }
 
-    func_tick();
-    MPIGatherAllBitmap();
-    last_tick = func_tick();
-    logger.mpi_log("sync mpi TIME : %fms\n", last_tick);
-    total_mpi_time += last_tick;
+    if (is_topdown) {
+      func_tick();
+      MPIGatherQueue();
+      last_tick = func_tick();
+      logger.mpi_log("mpi sync queue TIME : %fms\n", last_tick);
+      total_mpi_time += last_tick;
+
+    } else {
+      func_tick();
+      MPIGatherAllBitmap();
+      last_tick = func_tick();
+      logger.mpi_log("mpi sync bitmap TIME : %fms\n", last_tick);
+      total_mpi_time += last_tick;
+    }
   }
 
   for (int64_t v = 0; v < g_local_v_num; ++v) {

@@ -83,10 +83,11 @@ static inline bool test_bitmap(bit_type * __restrict__ bitmap, int64_t index) {
 
 /*----------------------------------------------------------------------------*/
 
-
+/* set the graph base data and alloc mem which bfs alg need use */
 static void
 SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
-  // graph
+  // graph info
+
   g_local_v_num       = local_csr.local_v_num();
   g_global_v_num      = local_csr.global_v_num();
   g_local_v_beg       = local_csr.local_v_beg();
@@ -95,7 +96,7 @@ SettingCSRGraph(LocalCSRGraph &local_csr, int64_t *bfs_tree) {
   g_local_csr_mem     = local_csr.csr_mem();
   g_bfs_tree          = bfs_tree;
 
-  // bitmap
+  // bitmap info
   g_local_bitmap_size =
     (local_csr.local_v_num() + kBitWidth - 1) / kBitWidth;
 
@@ -150,7 +151,7 @@ MPIGatherQueue() {
   for (size_t r = 0; r < gather_nums.size(); ++r) {
     gather_nums[r] = g_scatter_queues[r].size();
     /*
-    logger.mpi_debug("%s(): scatter rank %ld size: %ld\n", 
+    logger.mpi_debug("%s(): scatter rank %ld size: %ld\n",
         __func__, r, gather_nums[r]);
         */
   }
@@ -160,14 +161,14 @@ MPIGatherQueue() {
   // mpi sync
   g_current_queue.clear();
   g_current_queue.resize(gather_nums[mpi_rank]);
-  logger.mpi_debug("%s(): total queue size: %ld\n", 
+  logger.mpi_debug("%s(): total queue size: %ld\n",
       __func__, gather_nums[mpi_rank]);
 
   for (int base = 0; base < mpi_size; ++base) {
 
     if (base == mpi_rank) {
       QueuePair *offset = g_current_queue.data();
-      memcpy(offset, g_scatter_queues[base].data(), 
+      memcpy(offset, g_scatter_queues[base].data(),
           g_scatter_queues[base].size() * sizeof(QueuePair));
       offset += g_scatter_queues[base].size();
 
@@ -183,7 +184,7 @@ MPIGatherQueue() {
             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         offset += recv_count / 2;
 
-        //logger.mpi_debug("current queue size: %ld\n", 
+        //logger.mpi_debug("current queue size: %ld\n",
             //offset - g_current_queue.data());
       }
 
@@ -223,7 +224,7 @@ MPIGatherAllBitmap() {
 
 
 static void
-InitQueue(vector<QueuePair> &current_queue, 
+InitQueue(vector<QueuePair> &current_queue,
     vector<vector<QueuePair>> &scatter_queues,
     int64_t root) {
   current_queue.clear();
@@ -242,6 +243,7 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
     vector<vector<QueuePair>> &scatter_queues,
     bool &is_change) {
 
+  // clear parents info
   for (auto &q : scatter_queues) {
     q.clear();
   }
@@ -258,6 +260,7 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
       set_bitmap(local_bitmap, local_u);
     }
 
+    // for each edge judge if the vertex have be visited
 
     for (int64_t iter = adja_beg(local_u); iter < adja_end(local_u); ++iter) {
       int64_t global_v = next_vertex(iter);
@@ -278,7 +281,7 @@ BFSTopDown(int64_t * __restrict__ bfs_tree,
 
 
 static void
-FillunvisitedFromBitmap(bit_type * __restrict__ local_bitmap, 
+FillunvisitedFromBitmap(bit_type * __restrict__ local_bitmap,
     vector<int64_t> &unvisited) {
 
   unvisited.clear();
@@ -429,16 +432,16 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
         // FillunvisitedFromBitmap(g_local_bitmap, g_global_bitmap, unvisited_old);
         TickOnce switch_tick;
-        BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap, 
+        BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap,
             unvisited_old);
         logger.mpi_log("switch TIME: %fms\n", switch_tick());
       }
 
       func_tick();
 
-      BFSBottomUp(g_bfs_tree, 
-          g_local_bitmap, 
-          g_global_bitmap, 
+      BFSBottomUp(g_bfs_tree,
+          g_local_bitmap,
+          g_global_bitmap,
           unvisited_old,
           unvisited_new,
           is_change);
@@ -477,7 +480,7 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   }
 
   float bfs_time = total_bfs_tick();
-  logger.log("bfs TIME %fms, calc TIME %lfms, mpi sync TIME %lf\n", 
+  logger.log("bfs TIME %fms, calc TIME %lfms, mpi sync TIME %lf\n",
       bfs_time, total_calc_time, total_mpi_time);
   logger.log("TEPS: %le\n", g_global_v_num * 16.0 / bfs_time * 1000.0);
 }
@@ -496,6 +499,7 @@ BuildBFSTree(LocalCSRGraph &local_csr, int64_t root) {
 
   SettingCSRGraph(local_csr, bfs_tree);
 
+  // BFS alg
   MPIBFS(root, bfs_tree);
 
   ReleaseMemory();

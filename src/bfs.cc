@@ -394,6 +394,9 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   unvisited_old.reserve(g_local_v_num);
   unvisited_new.reserve(g_local_v_num);
 
+  bool is_init_queue {false};
+  bool is_init_unvisited {false};
+
   for (int level = 0; ; ++level) {
     bool is_change = false;
 
@@ -402,7 +405,6 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
     if (is_topdown) {
       func_tick();
 
-      static bool is_init_queue {false};
       if (!is_init_queue) {
         is_init_queue = true;
 
@@ -428,8 +430,6 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
     } else {
 
-
-      static bool is_init_unvisited {false};
       if (!is_init_unvisited) {
         is_init_unvisited = true;
 

@@ -8,6 +8,9 @@
 using std::string;
 
 
+/**
+ * Dump the raw edges to file
+ */
 void DumpLocalRawGraph(const string &filename, LocalRawGraph &local_raw) {
   logger.mpi_log("%s():\n", __func__);
 
@@ -22,6 +25,10 @@ void DumpLocalRawGraph(const string &filename, LocalRawGraph &local_raw) {
   logger.mpi_log("write to file: %s\n", ss.str().c_str());
 }
 
+
+/**
+ * Read the raw edges from file
+ */
 LocalRawGraph LoadLocalRawGraph(const string &filename) {
   std::stringstream ss;
   ss << filename << '_' << settings.mpi_rank;

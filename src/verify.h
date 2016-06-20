@@ -6,6 +6,12 @@
 #include <tuple>
 #include "utility.h"
 
+
+/**
+ * for validation, containing the neccessary information.
+ * more comments in verify.cc
+ */
+
 class Verifier {
   private:
     int64_t *_parents {nullptr};
@@ -63,6 +69,10 @@ class Verifier {
     bool Verify();
 };
 
+
+/**
+ * test case
+ */
 struct TEST_BFSTree {
   int64_t *parents { nullptr };
   int64_t global_v_num {0};

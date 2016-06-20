@@ -435,12 +435,9 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
         // FillunvisitedFromBitmap(g_local_bitmap, g_global_bitmap, unvisited_old);
         TickOnce switch_tick;
-<<<<<<< HEAD
-        BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap,
-=======
+
         /// init bottom up data
         BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap, 
->>>>>>> b5dc38ecc6c9b2b445fbc52ef84192266981414c
             unvisited_old);
         logger.mpi_log("switch TIME: %fms\n", switch_tick());
       }

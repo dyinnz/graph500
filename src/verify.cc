@@ -20,6 +20,10 @@ constexpr int64_t kWinLimit = 8192;
 
 const int Verifier::kMaxLevel = INT_MAX;
 
+
+/**
+ * Check the vertexes in the BFS tree whether is in range.
+ */
 bool
 Verifier::CheckRange() {
   logger.mpi_debug("%s()\n", __func__);
@@ -34,6 +38,10 @@ Verifier::CheckRange() {
   return true;
 }
 
+
+/**
+ * Check the parent of root whether is itself.
+ */
 bool
 Verifier::CheckParentOfRoot() {
   logger.mpi_debug("%s()\n", __func__);
@@ -47,6 +55,10 @@ Verifier::CheckParentOfRoot() {
   return true;
 }
 
+
+/**
+ * Check the parent of a vertex if not itself
+ */
 bool
 Verifier::CheckParentOfOthers() {
   logger.mpi_debug("%s()\n", __func__);
@@ -62,6 +74,10 @@ Verifier::CheckParentOfOthers() {
   return true;
 }
 
+
+/**
+ * Compute the levels of vertexes
+ */
 bool
 Verifier::ComputeLevels() {
   logger.mpi_debug("%s():\n", __func__);
@@ -84,6 +100,7 @@ Verifier::ComputeLevels() {
   MPI_Win_create(_levels.data(), _local_v_num * sizeof(int), sizeof(int),
       MPI_INFO_NULL, MPI_COMM_WORLD, _win);
 
+  // computing loop, check the level of parent of every unvisited vertex,
   bool is_done {false};
   for (int level = 1; !is_done; ++level) {
     is_done = true;
@@ -122,6 +139,7 @@ Verifier::ComputeLevels() {
 
     logger.mpi_debug("fence end: compute levels %d\n", level);
 
+    // update the level of unvisited vertex
     for (int64_t v = 0; v < _local_v_num; ++v)  {
       if (!visited[v] && parent_levels[v] < kMaxLevel) {
 
@@ -152,6 +170,11 @@ Verifier::ComputeLevels() {
   return result;
 }
 
+
+/**
+ * check the distance of two side of an edge, first
+ * using one-side MPI
+ */
 bool
 Verifier::CheckEdgeDistance() {
   logger.mpi_debug("%s()\n", __func__);
@@ -198,7 +221,7 @@ Verifier::CheckEdgeDistance() {
   }
   MPI_Win_fence(MPI_MODE_NOSUCCEED, *_win);
 
-  // calc
+  // check the distance of two side of an edge
   for (size_t e = 0; e < edges_levels.size(); ++e) {
     auto &level_p = edges_levels[e];
     if ((kMaxLevel == level_p.first && kMaxLevel != level_p.second) ||
@@ -222,6 +245,11 @@ Verifier::CheckEdgeDistance() {
   return result;
 }
 
+
+/**
+ * Get the parents of the two side of an edge.
+ * Using one-side MPI
+ */
 vector<pair<int64_t, int64_t>>
 Verifier::GetPairParents() {
   logger.mpi_debug("%s():\n", __func__);
@@ -269,6 +297,10 @@ Verifier::GetPairParents() {
   return pair_parents;
 }
 
+
+/**
+ * 
+ */
 vector<int8_t>
 Verifier::UpdateParentsValid(
     const vector<pair<int64_t, int64_t>> &pair_parents) {
@@ -319,6 +351,10 @@ Verifier::UpdateParentsValid(
   return parents_valid;
 }
 
+
+/**
+ * Check wether the tree edge is in graph
+ */
 bool
 Verifier::CheckTreeEdgeInGraph() {
   logger.mpi_debug("%s()\n", __func__);
@@ -337,6 +373,10 @@ Verifier::CheckTreeEdgeInGraph() {
   return result;
 }
 
+
+/**
+ * Verify BFS result by multiple stage
+ */
 bool
 Verifier::Verify() {
   mpi_log_barrier();
@@ -347,6 +387,7 @@ Verifier::Verify() {
   MPI_Allreduce(MPI_IN_PLACE, &_min_node_edge, 1, MPI_LONG_LONG,
       MPI_MIN, MPI_COMM_WORLD);
 
+  // lambda sync validation result with others
   auto sync_result = [&] {
     MPI_Allreduce(MPI_IN_PLACE, &result, 1, MPI_CHAR, MPI_BAND, MPI_COMM_WORLD);
     return result;
@@ -394,6 +435,10 @@ Verifier::Verify() {
   return result;
 }
 
+
+/**
+ * Construct a Verifier to verify
+ */
 bool
 VerifyBFSTree(int64_t *parents,
     int64_t global_v_num,
@@ -403,6 +448,10 @@ VerifyBFSTree(int64_t *parents,
   return verifier.Verify();
 }
 
+
+/**
+ * Init test case for validiton
+ */
 void
 TEST_BFSTree::Init() {
   assert(2 == settings.mpi_size);
@@ -435,6 +484,10 @@ TEST_BFSTree::Init() {
   }
 }
 
+
+/**
+ * Run test case 1
+ */
 void TEST_VerifyCase_1() {
   logger.log("Run %s()\n", __func__);
   TEST_BFSTree bfs_tree;

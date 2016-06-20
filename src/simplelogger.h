@@ -17,6 +17,11 @@
 
 namespace dy_logger {
 
+
+/**
+ * simple logger for MPI processes
+ */
+
 class Logger {
   public:
     enum Level {

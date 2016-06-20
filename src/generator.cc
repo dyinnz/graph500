@@ -25,6 +25,11 @@ constexpr double kAB { kGenParaA+kGenParaB };
 constexpr double kCNorm { kGenParaC / (1.0f - kGenParaA - kGenParaB) };
 constexpr double kANorm { kGenParaA / (kGenParaA + kGenParaB) };
 
+
+/**
+ * Generate the raw edge tuples parallely  which need shuffling later,
+ * using Kronecker Algorithm to generate.
+ */
 static void
 GenerateEdgeTuples(int64_t mpi_rank,
                    int64_t scale,
@@ -49,11 +54,17 @@ GenerateEdgeTuples(int64_t mpi_rank,
   */
 }
 
+
+/**
+ * Shuffle their own vertexes by substituting; do not have MPI communication
+ */
 static void
 ShuffleVertexes(int64_t mpi_rank,
                 double *U, double *V,
                 int64_t local_edge_num,
                 int64_t vertex_num) {
+
+  // first, generate a permutation array which the size of is V
   std::vector<int64_t> permut_vertex(vertex_num);
   for (int64_t i = 0; i < vertex_num; ++i) {
     permut_vertex[i] = i;
@@ -70,6 +81,8 @@ ShuffleVertexes(int64_t mpi_rank,
     logger.debug("%d\n", permut_vertex[i]);
   }
   */
+
+  // use the permutation to shuffle
   for (int64_t e = 0; e < local_edge_num; ++e) {
     U[e] = permut_vertex[int64_t(U[e])];
     V[e] = permut_vertex[int64_t(V[e])];
@@ -82,9 +95,10 @@ ShuffleVertexes(int64_t mpi_rank,
   */
 }
 
+
 /**
- * There may be a lot of MPI communication, bacause of swap discrete data with
- * remote mpi processes.
+ * Shuffle the edge by swapping with others. There may be a lot of MPI
+ * communication, bacause of swap discrete data with remote mpi processes.
  */
 static void
 ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
@@ -108,12 +122,14 @@ ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
       std::swap(V[e - e_beg], V[i - e_beg]);
 
     } else if (mpi_rank == e_own) {
+      // swap with remote MPI process
       MPI_Sendrecv_replace(&U[e-e_beg], 1, MPI_DOUBLE, i_own, 0, i_own, 0,
           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       MPI_Sendrecv_replace(&V[e-e_beg], 1, MPI_DOUBLE, i_own, 0, i_own, 0,
           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     } else if (mpi_rank == i_own) {
+      // swap with remote MPI process
       MPI_Sendrecv_replace(&U[i-e_beg], 1, MPI_DOUBLE, e_own, 0, e_own, 0,
           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       MPI_Sendrecv_replace(&V[i-e_beg], 1, MPI_DOUBLE, e_own, 0, e_own, 0,
@@ -122,6 +138,10 @@ ShuffleEdges(int64_t mpi_rank, double *U, double *V, int64_t edge_desired_num) {
   }
 }
 
+
+/**
+ * Convert double type to int64_t
+ */
 static void
 LoadEdges(double *U, double *V, Edge *edges, int64_t local_edge_num) {
   for (int64_t e = 0; e < local_edge_num; ++e) {
@@ -130,6 +150,10 @@ LoadEdges(double *U, double *V, Edge *edges, int64_t local_edge_num) {
   }
 }
 
+
+/**
+ * Genereate graph edges parallelly.
+ */
 LocalRawGraph
 MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   mpi_log_barrier();
@@ -147,6 +171,7 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
   }
   logger.mpi_log("local raw edge num: %ld\n", local_raw.edge_num);
 
+  // allocate double memory to run Kronecker Alogrithm.
   auto U = new double[local_raw.edge_num];
   auto V = new double[local_raw.edge_num];
   memset(U, 0, sizeof(double) * local_raw.edge_num);

@@ -16,6 +16,10 @@
 
 #include "simplelogger.h"
 
+
+/**
+ * Global settings
+ */
 struct Settings {
   int mpi_rank {-1};
   int mpi_size {-1};
@@ -32,23 +36,43 @@ struct Settings {
   std::string file_out;
 };
 
+
+/**
+ * Edge tuple
+ */
 struct Edge {
   int64_t u;
   int64_t v;
 };
 
+
+/**
+ * The raw graph, consist of edge tuples
+ */
 struct LocalRawGraph {
   Edge *edges;
   int64_t edge_num;
   int64_t global_edge_num;
 };
 
+
+/**
+ * define int32_t as bit_type, used in global and local bitmap
+ */
 typedef int32_t bit_type;
 constexpr int kBitWidth {sizeof(bit_type) * 8};
 
+
+/**
+ * decleration, defined in main.cc
+ */
 extern dy_logger::Logger logger;
 extern Settings settings;
 
+
+/**
+ * auto release when leaving scope
+ */
 class ScopeGuarder {
   public:
     ScopeGuarder(std::function<void()> &guard) : _guard(guard) {}
@@ -65,6 +89,9 @@ class ScopeGuarder {
 #define ScopeGuard(F) ScopeGuarder __FILE__##__LINE__##ScopeGuarder(F)
 
 
+/**
+ * time tick
+ */
 class TickOnce {
   public:
     TickOnce() : _last(std::chrono::system_clock::now()) {}
@@ -79,6 +106,10 @@ class TickOnce {
     std::chrono::system_clock::time_point _last;
 };
 
+
+/**
+ * some useful inline function for MPI
+ */
 
 inline bool 
 mpi_is_last_rank() {

@@ -10,7 +10,6 @@
 #include <vector>
 #include "utility.h"
 #include "construct.h"
-#include "bfs_gpu.h"
 
 using std::vector;
 
@@ -335,17 +334,21 @@ BFSBottomUp(int64_t * __restrict__ bfs_tree,
   is_change = false;
 
   logger.mpi_log("unvisited size: %zu\n", unvisited_old.size());
+  // scan each unvisited vertex
   for (size_t i = 0; i < unvisited_old.size(); ++i) {
     int64_t local_v = unvisited_old[i];
 
     int64_t global_v = local_to_global(local_v);
     if (-1 == bfs_tree[local_v]) {
 
+      // scan each edge belong to local_v
       for (int64_t iter = adja_beg(local_v); iter < adja_end(local_v); ++iter) {
         int64_t global_u = next_vertex(iter);
 
         int64_t global_pos = global_u / kBitWidth;
         bit_type  global_mask = 1 << (global_u % kBitWidth);
+
+        // if the vertex u si visited then mark u is v's parent
         if (global_bitmap[global_pos] & global_mask) {
 
           int64_t local_pos = local_v / kBitWidth;
@@ -432,7 +435,12 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
         // FillunvisitedFromBitmap(g_local_bitmap, g_global_bitmap, unvisited_old);
         TickOnce switch_tick;
+<<<<<<< HEAD
         BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap,
+=======
+        /// init bottom up data
+        BFSSwitch(g_current_queue, g_local_bitmap, g_global_bitmap, 
+>>>>>>> b5dc38ecc6c9b2b445fbc52ef84192266981414c
             unvisited_old);
         logger.mpi_log("switch TIME: %fms\n", switch_tick());
       }

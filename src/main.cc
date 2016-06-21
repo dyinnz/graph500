@@ -21,6 +21,8 @@ using std::string;
 
 Logger logger;
 Settings settings;
+vector<float> g_bfs_time;
+vector<float> g_teps;
 
 LocalRawGraph MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num);
 int64_t* BuildBFSTree(LocalCSRGraph &local_csr, int64_t root);
@@ -106,6 +108,9 @@ Initialize() {
   settings.edge_desired_num = settings.edge_factor * settings.vertex_num;
   settings.least_v_num = settings.vertex_num / settings.mpi_size 
     / kBitWidth * kBitWidth;
+
+  g_bfs_time.reserve(64);
+  g_teps.reserve(64);
 
   logger.log("Total vertexes      : %ld\n", settings.vertex_num);
   logger.log("Total desired edges : %ld\n", settings.edge_desired_num);
@@ -236,6 +241,19 @@ main(int argc, char *argv[]) {
     delete []bfs_tree;
 
   }
+
+  float sum_bfs_time = 0.0f;
+  for (auto f : g_bfs_time) {
+    sum_bfs_time += f;
+  }
+
+  float sum_teps = 0.0f;
+  for (auto f : g_teps) {
+    sum_teps += f;
+  }
+
+  logger.log("average BFS TIME: %fms\n", sum_bfs_time / g_bfs_time.size());
+  logger.log("average TEPS: %e\n", sum_teps / g_teps.size());
 
   delete [] local_raw.edges;
   local_raw.edges = nullptr;

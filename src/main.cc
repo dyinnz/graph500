@@ -93,7 +93,6 @@ ParseParameters(int argc, char * const *argv) {
   logger.log("Edge factor   : %d\n", settings.edge_factor);
   logger.log("Debug mode    : %d\n", settings.is_debug);
   logger.log("Validation    : %d\n", settings.is_verify);
-  logger.log("Shuffle edges : %d\n", settings.is_shuffle_edges);
   logger.log("Input file    : %s\n", settings.file_in.c_str());
   logger.log("Output file   : %s\n", settings.file_out.c_str());
 }

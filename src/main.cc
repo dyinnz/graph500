@@ -235,9 +235,6 @@ main(int argc, char *argv[]) {
 
     delete []bfs_tree;
 
-  #ifdef DEBUG
-    break;
-  #endif
   }
 
   delete [] local_raw.edges;

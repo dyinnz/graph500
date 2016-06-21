@@ -31,7 +31,7 @@ struct Settings {
   int64_t least_v_num {0};
   bool is_debug {false};
   bool is_verify {true};
-  bool is_shuffle_edges {true};
+  bool is_shuffle_edges {false};
   std::string file_in;
   std::string file_out;
 };

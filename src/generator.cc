@@ -190,7 +190,6 @@ MPIGenerateGraph(int64_t vertex_num, int64_t edge_desired_num) {
     ShuffleEdges(settings.mpi_rank, U, V, edge_desired_num);
     logger.mpi_log("ShuffleEdges: TIME %fms\n", tick_sub());
   } else {
-    logger.log("Skip shuffling edges\n");
   }
 
   local_raw.edges = new Edge[local_raw.edge_num];

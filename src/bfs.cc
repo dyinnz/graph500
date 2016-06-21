@@ -14,6 +14,9 @@
 using std::vector;
 
 
+extern vector<float> g_bfs_time;
+extern vector<float> g_teps;
+
 int64_t g_local_v_num;
 int64_t g_global_v_num;
 int64_t g_local_v_beg;
@@ -372,7 +375,6 @@ BFSBottomUp(int64_t * __restrict__ bfs_tree,
 static void
 MPIBFS(int64_t root, int64_t *bfs_tree) {
   memset(bfs_tree, -1, sizeof(int64_t) * g_local_v_num);
-  SetBFSRoot(root);
 
   /*
      for (int64_t v = 0; v < g_local_v_num; ++v) {
@@ -386,7 +388,6 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   float total_mpi_time {0.0f};
   float last_tick {0.0f};
 
-  TickOnce total_bfs_tick;
   TickOnce func_tick;
 
   vector<int64_t> unvisited_old;
@@ -397,6 +398,8 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
   bool is_init_queue {false};
   bool is_init_unvisited {false};
 
+  TickOnce total_bfs_tick;
+  SetBFSRoot(root);
   for (int level = 0; ; ++level) {
     bool is_change = false;
 
@@ -410,12 +413,6 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
 
         InitQueue(g_current_queue, g_scatter_queues, root);
       }
-
-      /*
-      for (auto &p : g_current_queue) {
-        logger.mpi_debug("current queue: %ld's parent %ld\n", p.self, p.parent);
-      }
-      */
 
       BFSTopDown(g_bfs_tree,
           g_local_bitmap,
@@ -478,16 +475,22 @@ MPIBFS(int64_t root, int64_t *bfs_tree) {
       total_mpi_time += last_tick;
     }
   }
+  float bfs_time = total_bfs_tick();
+  logger.log("bfs TIME %fms, calc TIME %lfms, mpi sync TIME %lf\n",
+      bfs_time, total_calc_time, total_mpi_time);
+  float teps = g_global_v_num * 16.0 / bfs_time * 1000.0;
+  logger.log("TEPS: %le\n", teps);
 
+  g_bfs_time.push_back(bfs_time);
+  g_teps.push_back(teps);
+
+  /*
   for (int64_t v = 0; v < g_local_v_num; ++v) {
     logger.mpi_debug("after bfs, v[%ld]'s parent %ld\n",
         local_to_global(v), g_bfs_tree[v]);
   }
+  */
 
-  float bfs_time = total_bfs_tick();
-  logger.log("bfs TIME %fms, calc TIME %lfms, mpi sync TIME %lf\n",
-      bfs_time, total_calc_time, total_mpi_time);
-  logger.log("TEPS: %le\n", g_global_v_num * 16.0 / bfs_time * 1000.0);
 }
 
 

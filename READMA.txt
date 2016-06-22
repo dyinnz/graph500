@@ -1,0 +1,41 @@
+By Yingzhong Guo of Huazhong University of Science & Technology
+
+#### Graph500 README ####
+
+Compile and Running Environment
+1. gcc-4.9.3
+2. Intel MPI (Version 5.1.3)
+3. zsh
+4  cmake-2.8 or latter
+
+Compile Command
+after checking the compile environment, follow the instructions below in order please:
+1. ./mk.sh g
+2. ./mk.sh
+
+Running Command
+./run.sh  : launch single process on single node
+./mpirun.sh : lauch multiple processes on multi nodes according to the hostfile
+
+NOTICE:
+the ./mpirun.sh shell script run **28** MPI processes by default, and we run graph500 on 4 nodes of our cluster
+
+Running Parameters:
+-s N         Generate the graph which scale is N
+-v 1 or 0    whether or not run validation. I suggest that do not run validation when scale is large, because it may a bit slow
+
+
+
+#### ISC 2016-06-21 Graph500 Result ####
+Below is our running parameters:
+
+./mpirun -s 26 -v 0       : means that scale is 26 and skip validtion after BFS
+
+SCALE: 26
+the average BFS TIME: 168.144333ms
+the average TEPS: 8.757238e+09
+
+Result Result:
+test.log    the raw running log of graph500, contain most information you may need, but it is a little messy
+time.log    the "time" and "date" command output, record when the program run and how long the program run
+root.log    the extracted log of test.log. Get it by running command "grep ROOT test.log". Containing the necessary information
